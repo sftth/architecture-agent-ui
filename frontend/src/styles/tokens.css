@@ -1,0 +1,82 @@
+/*
+  디자인 컨셉: "청사진(blueprint) 위의 관제 콘솔"
+  architecture-agent는 sub-agent들이 실제 "설계서"를 그리고, Policy Gate를 통과시키고,
+  점수로 평가받아 설치까지 이어지는 도면 제작 -> 검증 파이프라인이다.
+  그 세계관(제도용지, 시안선, 게이트/밸브, 합격/불합격 스탬프)을 그대로 화면 언어로 가져온다.
+*/
+:root {
+  /* Color - blueprint navy base + 시안 제도선 + 상태 3색(진행/합격/불합격) */
+  --ink-950: #0a1420;
+  --ink-900: #0d1826;
+  --ink-850: #101d2e;
+  --ink-800: #16263a;
+  --line-cyan: #3e7692;
+  --line-cyan-dim: #23445a;
+  --paper-100: #e9f0f4;
+  --paper-300: #b9c9d4;
+  --paper-500: #7f97a6;
+
+  --signal-amber: #f2a65a;
+  --signal-amber-dim: #7a5a34;
+  --gate-mint: #59c9a5;
+  --gate-mint-dim: #2f5f4f;
+  --gate-rose: #e1667c;
+  --gate-rose-dim: #6a3540;
+
+  /* Type */
+  --font-display: "IBM Plex Mono", ui-monospace, monospace;
+  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Scale */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --shadow-panel: 0 1px 0 rgba(233, 240, 244, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --ink-950: #eef2f5;
+    --ink-900: #e4eaee;
+    --ink-850: #ffffff;
+    --ink-800: #f4f7f9;
+    --paper-100: #142230;
+    --paper-300: #3d5566;
+    --paper-500: #5f7889;
+    --line-cyan: #2f6a86;
+    --line-cyan-dim: #b9d3de;
+  }
+}
+
+:root[data-theme="light"] {
+  --ink-950: #eef2f5;
+  --ink-900: #e4eaee;
+  --ink-850: #ffffff;
+  --ink-800: #f4f7f9;
+  --paper-100: #142230;
+  --paper-300: #3d5566;
+  --paper-500: #5f7889;
+  --line-cyan: #2f6a86;
+  --line-cyan-dim: #b9d3de;
+}
+
+:root[data-theme="dark"] {
+  --ink-950: #0a1420;
+  --ink-900: #0d1826;
+  --ink-850: #101d2e;
+  --ink-800: #16263a;
+  --paper-100: #e9f0f4;
+  --paper-300: #b9c9d4;
+  --paper-500: #7f97a6;
+  --line-cyan: #3e7692;
+  --line-cyan-dim: #23445a;
+}

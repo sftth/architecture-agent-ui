@@ -1,0 +1,59 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(var(--line-cyan-dim) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, var(--line-cyan-dim) 1px, transparent 1px) 0 0 / 32px 100%,
+    var(--ink-950);
+  background-blend-mode: overlay, overlay, normal;
+  color: var(--paper-100);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body {
+  background-blend-mode: soft-light, soft-light, normal;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background-blend-mode: soft-light, soft-light, normal;
+  }
+}
+
+::selection {
+  background: var(--signal-amber);
+  color: var(--ink-950);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: var(--font-label);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--signal-amber);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

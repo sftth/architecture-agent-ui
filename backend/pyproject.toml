@@ -1,0 +1,13 @@
+[project]
+name = "architecture-agent-ui-backend"
+version = "0.1.0"
+description = "architecture-agent Claude CLI를 웹 브라우저에서 실행/모니터링하는 백엔드"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "websockets>=13.0",
+]
+
+[tool.uv]
+package = false
