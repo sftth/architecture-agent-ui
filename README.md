@@ -74,6 +74,10 @@ SSH 세션을 끊거나 서버를 재부팅해도 계속 떠 있게 하려면 sy
 `ExecStart`의 경로는 실제 설치 경로/사용자에 맞게 바꾸세요(`uv`, node 버전 등은 `which uv`,
 `which node`로 절대경로를 확인해서 채우면 됩니다 — systemd는 로그인 셸의 PATH를 쓰지 않습니다).
 
+> **중요**: `claude` CLI가 `~/.local/bin` 등 PATH에만 등록돼 있고 systemd 서비스 환경에는
+> 없는 경우, 실행 시 `'claude' 실행 파일을 찾을 수 없습니다`가 납니다. 아래처럼 `CLAUDE_BIN`을
+> `which claude`로 확인한 절대경로로 지정하세요.
+
 `/etc/systemd/system/architecture-agent-ui-backend.service`:
 
 ```ini
@@ -84,6 +88,7 @@ After=network.target
 [Service]
 Type=simple
 User=ec2-user
+Environment=CLAUDE_BIN=/home/ec2-user/.local/bin/claude
 WorkingDirectory=/home/ec2-user/architecture-agent-ui/backend
 ExecStart=/home/ec2-user/architecture-agent-ui/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 Restart=on-failure
