@@ -3,30 +3,35 @@ import PipelineDiagram from "./components/PipelineDiagram";
 import StageCard from "./components/StageCard";
 import RunConsole from "./components/RunConsole";
 import RunHistory from "./components/RunHistory";
-import { createRun, getCatalog, listRuns, openRunSocket, stopRun } from "./api/client";
-import { LogEvent, RunSummary, StageDef } from "./types";
+import AgentPathSettings from "./components/AgentPathSettings";
+import { createRun, getCatalog, getConfig, listRuns, openRunSocket, stopRun } from "./api/client";
+import { AgentPathConfig, LogEvent, RunSummary, StageDef } from "./types";
 import "./App.css";
 
 export default function App() {
+  const [config, setConfig] = useState<AgentPathConfig | null | undefined>(undefined);
+  const [pathPanelOpen, setPathPanelOpen] = useState(false);
   const [stages, setStages] = useState<StageDef[]>([]);
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [backendOk, setBackendOk] = useState<boolean | null>(null);
   const closeSocketRef = useRef<() => void>();
 
   useEffect(() => {
+    getConfig().then(setConfig);
+  }, []);
+
+  const isReady = Boolean(config?.exists && config?.has_agents);
+
+  useEffect(() => {
+    if (!isReady) return;
     getCatalog().then((res) => setStages(res.stages));
     listRuns().then((runs) => {
       const map: Record<string, RunSummary> = {};
       runs.forEach((r) => (map[r.id] = r));
       setRunsById(map);
     });
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => setBackendOk(Boolean(d.architecture_agent_dir_exists)))
-      .catch(() => setBackendOk(false));
-  }, []);
+  }, [isReady, config?.architecture_agent_dir]);
 
   function connect(runId: string) {
     closeSocketRef.current?.();
@@ -86,16 +91,37 @@ export default function App() {
     return candidates.sort((a, b) => (a.started_at < b.started_at ? 1 : -1))[0];
   }
 
+  if (config === undefined) {
+    return <div className="app-loading">불러오는 중...</div>;
+  }
+
+  if (!config || !config.exists || !config.has_agents) {
+    return <AgentPathSettings config={config ?? null} variant="gate" onSaved={setConfig} />;
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-eyebrow">ARCHITECTURE-AGENT · CONTROL CONSOLE</div>
         <h1 className="app-header-title">인프라 자동화 파이프라인 관제</h1>
-        <div className={`app-backend-badge app-backend-badge--${backendOk ? "ok" : backendOk === false ? "down" : "pending"}`}>
-          <span className="app-backend-dot" />
-          {backendOk === null ? "백엔드 확인 중" : backendOk ? "claude CLI 연결됨" : "architecture-agent 경로를 찾을 수 없음"}
-        </div>
+        <button
+          className="app-path-badge app-path-badge--ok"
+          onClick={() => setPathPanelOpen((v) => !v)}
+          title={config.architecture_agent_dir ?? ""}
+        >
+          <span className="app-path-dot" />
+          {config.architecture_agent_dir}
+        </button>
       </header>
+
+      {pathPanelOpen && (
+        <AgentPathSettings
+          config={config}
+          variant="panel"
+          onSaved={setConfig}
+          onClose={() => setPathPanelOpen(false)}
+        />
+      )}
 
       <PipelineDiagram runs={runs} />
 

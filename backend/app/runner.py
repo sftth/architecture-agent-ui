@@ -2,15 +2,11 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from .agents_catalog import find_agent
-from .config import (
-    ARCHITECTURE_AGENT_DIR,
-    CLAUDE_BIN,
-    CLAUDE_PERMISSION_MODE,
-    MAX_LOG_EVENTS_PER_RUN,
-)
+from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
 from .models import LogEvent, RunSummary
 
 
@@ -19,9 +15,12 @@ def _now() -> str:
 
 
 class RunState:
-    def __init__(self, run_id: str, stage_key: str, stage_title: str, agent_key: str,
-                 agent_label: str, prompt: str, full_prompt: str):
+    def __init__(self, run_id: str, client_id: str, agent_dir: str, stage_key: str,
+                 stage_title: str, agent_key: str, agent_label: str, prompt: str,
+                 full_prompt: str):
         self.id = run_id
+        self.client_id = client_id
+        self.agent_dir = agent_dir
         self.stage_key = stage_key
         self.stage_title = stage_title
         self.agent_key = agent_key
@@ -184,7 +183,7 @@ async def _execute(run: RunState):
     try:
         run.process = await asyncio.create_subprocess_exec(
             *argv,
-            cwd=str(ARCHITECTURE_AGENT_DIR),
+            cwd=run.agent_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -193,7 +192,7 @@ async def _execute(run: RunState):
         run._finish("error", None)
         return
 
-    run._emit("system", text=f"claude CLI 실행: {' '.join(argv[:3])} ... (cwd={ARCHITECTURE_AGENT_DIR})")
+    run._emit("system", text=f"claude CLI 실행: {' '.join(argv[:3])} ... (cwd={run.agent_dir})")
 
     try:
         await asyncio.gather(_pump_stdout(run), _pump_stderr(run))
@@ -212,8 +211,8 @@ class RunManager:
         self.runs: Dict[str, RunState] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
 
-    def create_run(self, agent_key: str, prompt: str) -> RunState:
-        stage, agent = find_agent(agent_key)
+    def create_run(self, client_id: str, agent_dir: str, agent_key: str, prompt: str) -> RunState:
+        stage, agent = find_agent(Path(agent_dir), agent_key)
         if agent is None:
             raise ValueError(f"알 수 없는 agent_key: {agent_key}")
 
@@ -221,6 +220,8 @@ class RunManager:
         full_prompt = f"@{agent_key} {prompt}".strip()
         run = RunState(
             run_id=run_id,
+            client_id=client_id,
+            agent_dir=agent_dir,
             stage_key=stage["key"],
             stage_title=stage["title"],
             agent_key=agent_key,
@@ -235,9 +236,10 @@ class RunManager:
     def get_run(self, run_id: str) -> Optional[RunState]:
         return self.runs.get(run_id)
 
-    def list_runs(self) -> List[RunSummary]:
+    def list_runs(self, client_id: str) -> List[RunSummary]:
         return [r.summary() for r in sorted(
-            self.runs.values(), key=lambda r: r.started_at, reverse=True
+            (r for r in self.runs.values() if r.client_id == client_id),
+            key=lambda r: r.started_at, reverse=True,
         )]
 
     async def stop_run(self, run_id: str) -> bool:

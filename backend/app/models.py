@@ -10,6 +10,10 @@ class CreateRunRequest(BaseModel):
     prompt: str
 
 
+class SetConfigRequest(BaseModel):
+    architecture_agent_dir: str
+
+
 class RunSummary(BaseModel):
     id: str
     agent_key: str

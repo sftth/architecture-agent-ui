@@ -6,14 +6,15 @@ router = APIRouter()
 
 
 @router.websocket("/ws/runs/{run_id}")
-async def ws_run(websocket: WebSocket, run_id: str):
+async def ws_run(websocket: WebSocket, run_id: str, client_id: str):
     await websocket.accept()
-    queue = run_manager.subscribe(run_id)
-    if queue is None:
+    run = run_manager.get_run(run_id)
+    if run is None or run.client_id != client_id:
         await websocket.send_json({"kind": "error", "text": "run not found"})
         await websocket.close()
         return
 
+    queue = run_manager.subscribe(run_id)
     try:
         while True:
             event = await queue.get()

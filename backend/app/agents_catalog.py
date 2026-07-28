@@ -3,6 +3,9 @@
 README.md의 Sub-agents 표는 실제 등록된 agent 이름과 어긋나 있었다(예: README의
 `design-implementer`는 실제로는 `design-impl`). 문서가 프로젝트 변경을 못 따라가는 문제를
 피하기 위해, 이 파일은 하드코딩된 목록 대신 항상 .claude/agents/ 원본에서 직접 읽는다.
+
+사용자마다 architecture-agent를 clone해둔 경로가 다르므로, 카탈로그는 모듈 로드 시
+한 번 계산하는 전역 값이 아니라 요청마다 agent_dir을 받아 그 자리에서 계산한다.
 """
 
 import re
@@ -10,10 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-
-from .config import ARCHITECTURE_AGENT_DIR
-
-AGENTS_ROOT = ARCHITECTURE_AGENT_DIR / ".claude" / "agents"
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)---\s*\n", re.DOTALL)
 
@@ -36,8 +35,8 @@ STAGE_META = {
 }
 
 
-def _domain_for_path(path: Path) -> str:
-    parts = path.relative_to(AGENTS_ROOT).parts
+def _domain_for_path(agents_root: Path, path: Path) -> str:
+    parts = path.relative_to(agents_root).parts
     if parts[0] != "implement":
         return parts[0]
     rest = parts[1:]
@@ -81,16 +80,17 @@ def _parse_agent_file(path: Path) -> Optional[dict]:
     }
 
 
-def _build_stages() -> list:
-    if not AGENTS_ROOT.exists():
+def build_stages(agent_dir: Path) -> list:
+    agents_root = agent_dir / ".claude" / "agents"
+    if not agents_root.exists():
         return []
 
     by_domain: dict[str, list] = {}
-    for path in sorted(AGENTS_ROOT.rglob("*.md")):
+    for path in sorted(agents_root.rglob("*.md")):
         agent = _parse_agent_file(path)
         if agent is None:
             continue
-        domain = _domain_for_path(path)
+        domain = _domain_for_path(agents_root, path)
         by_domain.setdefault(domain, []).append(agent)
 
     stages = []
@@ -142,11 +142,8 @@ def _build_stages() -> list:
     return stages
 
 
-STAGES = _build_stages()
-
-
-def find_agent(agent_key: str):
-    for stage in STAGES:
+def find_agent(agent_dir: Path, agent_key: str):
+    for stage in build_stages(agent_dir):
         for agent in stage["agents"]:
             if agent["key"] == agent_key:
                 return stage, agent

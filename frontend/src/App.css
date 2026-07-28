@@ -30,30 +30,50 @@
   letter-spacing: -0.01em;
 }
 
-.app-backend-badge {
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--paper-500);
+}
+
+.app-path-badge {
   margin-left: auto;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--paper-500);
+  background: none;
   border: 1px solid var(--line-cyan-dim);
   border-radius: 999px;
   padding: 4px 10px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.app-backend-dot {
+.app-path-badge:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.app-path-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--paper-500);
 }
 
-.app-backend-badge--ok .app-backend-dot { background: var(--gate-mint); }
-.app-backend-badge--ok { color: var(--gate-mint); border-color: var(--gate-mint-dim); }
-.app-backend-badge--down .app-backend-dot { background: var(--gate-rose); }
-.app-backend-badge--down { color: var(--gate-rose); border-color: var(--gate-rose-dim); }
+.app-path-badge--ok .app-path-dot { background: var(--gate-mint); }
+.app-path-badge--ok { color: var(--gate-mint); border-color: var(--gate-mint-dim); }
 
 .app-main {
   display: grid;

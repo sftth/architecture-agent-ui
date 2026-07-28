@@ -27,6 +27,10 @@ npm-debug.log*
 backend/runs/*
 !backend/runs/.gitkeep
 
+# 사용자별 architecture-agent 경로 설정 (서버 로컬 상태, 사람마다 다른 경로가 들어있어 공유 X)
+backend/data/*
+!backend/data/.gitkeep
+
 # Editor
 .vscode/
 .idea/

@@ -1,3 +1,9 @@
+export interface AgentPathConfig {
+  architecture_agent_dir: string | null;
+  exists: boolean;
+  has_agents: boolean;
+}
+
 export interface AgentDef {
   key: string;
   label: string;
