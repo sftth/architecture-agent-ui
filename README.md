@@ -16,7 +16,10 @@
 
 - Python 3.12, [uv](https://docs.astral.sh/uv/)
 - Node.js 18+, npm
-- [`claude` CLI](https://docs.claude.com/en/docs/claude-code) 설치 및 로그인 완료
+- [`claude` CLI](https://docs.claude.com/en/docs/claude-code) 설치 및 로그인 완료. 최신 버전 권장 —
+  `backend/app/runner.py`가 쓰는 `--forward-subagent-text` 플래그가 없는 구버전(예: 2.1.123)에서는
+  `error: unknown option '--forward-subagent-text'`가 남. `claude update`로 갱신하면 해결됨
+  (2.1.220에서 확인)
 - 실행할 [architecture-agent](https://github.com/sftth/architecture-agent) 프로젝트를 로컬에 clone
 
 ## 백엔드 기동
