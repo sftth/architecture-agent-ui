@@ -10,13 +10,16 @@ CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "bypassPermiss
 
 MAX_LOG_EVENTS_PER_RUN = 5000
 
-# 사용자(client)별로 지정한 architecture-agent 경로를 저장하는 파일.
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+# 계정(이메일/비밀번호 해시)과 계정별 환경 설정(architecture-agent 경로)을 저장하는 파일.
 # 여러 사람이 각자 다른 경로에 architecture-agent를 clone해두고 이 UI(단일 프로세스)를
-# 공유해서 쓰므로, 전역 경로 하나 대신 client_id -> 경로 매핑을 파일에 저장해 각자 지정한
-# 경로로 claude CLI를 실행한다.
-CLIENT_CONFIG_PATH = Path(
-    os.environ.get(
-        "CLIENT_CONFIG_PATH",
-        str(Path(__file__).resolve().parent.parent / "data" / "client_configs.json"),
-    )
-)
+# 공유해서 쓰므로, 전역 경로 하나 대신 계정별 설정을 저장해 각자 지정한 경로로 claude CLI를 실행한다.
+USER_STORE_PATH = Path(os.environ.get("USER_STORE_PATH", str(_DATA_DIR / "users.json")))
+
+# 발급된 로그인 토큰. 파일에 두면 백엔드를 재시작(--reload 포함)해도 로그인이 유지된다.
+SESSION_STORE_PATH = Path(os.environ.get("SESSION_STORE_PATH", str(_DATA_DIR / "sessions.json")))
+
+SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
+
+PBKDF2_ITERATIONS = int(os.environ.get("PBKDF2_ITERATIONS", "240000"))

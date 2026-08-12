@@ -10,6 +10,7 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+*.tsbuildinfo
 
 # Env / secrets
 .env
@@ -27,7 +28,7 @@ npm-debug.log*
 backend/runs/*
 !backend/runs/.gitkeep
 
-# 사용자별 architecture-agent 경로 설정 (서버 로컬 상태, 사람마다 다른 경로가 들어있어 공유 X)
+# 계정(비밀번호 해시) / 로그인 세션 / 계정별 architecture-agent 경로 (서버 로컬 상태, 공유 X)
 backend/data/*
 !backend/data/.gitkeep
 

@@ -15,11 +15,11 @@ def _now() -> str:
 
 
 class RunState:
-    def __init__(self, run_id: str, client_id: str, agent_dir: str, stage_key: str,
+    def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
                  stage_title: str, agent_key: str, agent_label: str, prompt: str,
                  full_prompt: str):
         self.id = run_id
-        self.client_id = client_id
+        self.user_id = user_id
         self.agent_dir = agent_dir
         self.stage_key = stage_key
         self.stage_title = stage_title
@@ -211,7 +211,7 @@ class RunManager:
         self.runs: Dict[str, RunState] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
 
-    def create_run(self, client_id: str, agent_dir: str, agent_key: str, prompt: str) -> RunState:
+    def create_run(self, user_id: str, agent_dir: str, agent_key: str, prompt: str) -> RunState:
         stage, agent = find_agent(Path(agent_dir), agent_key)
         if agent is None:
             raise ValueError(f"알 수 없는 agent_key: {agent_key}")
@@ -220,7 +220,7 @@ class RunManager:
         full_prompt = f"@{agent_key} {prompt}".strip()
         run = RunState(
             run_id=run_id,
-            client_id=client_id,
+            user_id=user_id,
             agent_dir=agent_dir,
             stage_key=stage["key"],
             stage_title=stage["title"],
@@ -236,9 +236,9 @@ class RunManager:
     def get_run(self, run_id: str) -> Optional[RunState]:
         return self.runs.get(run_id)
 
-    def list_runs(self, client_id: str) -> List[RunSummary]:
+    def list_runs(self, user_id: str) -> List[RunSummary]:
         return [r.summary() for r in sorted(
-            (r for r in self.runs.values() if r.client_id == client_id),
+            (r for r in self.runs.values() if r.user_id == user_id),
             key=lambda r: r.started_at, reverse=True,
         )]
 
