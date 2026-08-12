@@ -1,37 +1,76 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PipelineDiagram from "./components/PipelineDiagram";
 import StageCard from "./components/StageCard";
 import RunConsole from "./components/RunConsole";
 import RunHistory from "./components/RunHistory";
-import AgentPathSettings from "./components/AgentPathSettings";
-import { createRun, getCatalog, getConfig, listRuns, openRunSocket, stopRun } from "./api/client";
-import { AgentPathConfig, LogEvent, RunSummary, StageDef } from "./types";
+import AuthScreen from "./components/AuthScreen";
+import SettingsScreen from "./components/SettingsScreen";
+import {
+  AUTH_EXPIRED_EVENT,
+  createRun,
+  fetchMe,
+  getCatalog,
+  getToken,
+  listRuns,
+  logout,
+  openRunSocket,
+  stopRun,
+} from "./api/client";
+import { LogEvent, RunSummary, StageDef, UserProfile } from "./types";
 import "./App.css";
 
 export default function App() {
-  const [config, setConfig] = useState<AgentPathConfig | null | undefined>(undefined);
-  const [pathPanelOpen, setPathPanelOpen] = useState(false);
+  // undefined: 세션 확인 중 / null: 로그아웃 상태
+  const [user, setUser] = useState<UserProfile | null | undefined>(undefined);
+  const [view, setView] = useState<"console" | "settings">("console");
   const [stages, setStages] = useState<StageDef[]>([]);
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const closeSocketRef = useRef<() => void>();
 
-  useEffect(() => {
-    getConfig().then(setConfig);
+  const resetSession = useCallback(() => {
+    closeSocketRef.current?.();
+    closeSocketRef.current = undefined;
+    setUser(null);
+    setView("console");
+    setStages([]);
+    setRunsById({});
+    setEventsByRun({});
+    setActiveRunId(null);
   }, []);
 
-  const isReady = Boolean(config?.exists && config?.has_agents);
+  useEffect(() => {
+    if (!getToken()) {
+      setUser(null);
+      return;
+    }
+    fetchMe()
+      .then(setUser)
+      .catch(() => setUser(null));
+  }, []);
+
+  // 토큰 만료/폐기(401)는 어느 요청에서든 발생할 수 있어 전역에서 한 번만 처리한다.
+  useEffect(() => {
+    window.addEventListener(AUTH_EXPIRED_EVENT, resetSession);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, resetSession);
+  }, [resetSession]);
+
+  const isReady = Boolean(user?.path_exists && user?.path_has_agents);
 
   useEffect(() => {
     if (!isReady) return;
-    getCatalog().then((res) => setStages(res.stages));
-    listRuns().then((runs) => {
-      const map: Record<string, RunSummary> = {};
-      runs.forEach((r) => (map[r.id] = r));
-      setRunsById(map);
-    });
-  }, [isReady, config?.architecture_agent_dir]);
+    getCatalog()
+      .then((res) => setStages(res.stages))
+      .catch(() => setStages([]));
+    listRuns()
+      .then((runs) => {
+        const map: Record<string, RunSummary> = {};
+        runs.forEach((r) => (map[r.id] = r));
+        setRunsById(map);
+      })
+      .catch(() => setRunsById({}));
+  }, [isReady, user?.architecture_agent_dir]);
 
   function connect(runId: string) {
     closeSocketRef.current?.();
@@ -79,6 +118,14 @@ export default function App() {
     await stopRun(activeRunId);
   }
 
+  async function handleLogout() {
+    try {
+      await logout();
+    } finally {
+      resetSession();
+    }
+  }
+
   useEffect(() => () => closeSocketRef.current?.(), []);
 
   const runs = useMemo(() => Object.values(runsById), [runsById]);
@@ -91,12 +138,24 @@ export default function App() {
     return candidates.sort((a, b) => (a.started_at < b.started_at ? 1 : -1))[0];
   }
 
-  if (config === undefined) {
+  if (user === undefined) {
     return <div className="app-loading">불러오는 중...</div>;
   }
 
-  if (!config || !config.exists || !config.has_agents) {
-    return <AgentPathSettings config={config ?? null} variant="gate" onSaved={setConfig} />;
+  if (user === null) {
+    return <AuthScreen onAuthenticated={setUser} />;
+  }
+
+  // 경로가 유효하지 않으면(최초 가입 시 미입력 등) 환경 설정 화면에서 먼저 지정하게 한다.
+  if (view === "settings" || !isReady) {
+    return (
+      <SettingsScreen
+        user={user}
+        onUpdated={setUser}
+        onClose={() => setView("console")}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   return (
@@ -104,24 +163,23 @@ export default function App() {
       <header className="app-header">
         <div className="app-header-eyebrow">ARCHITECTURE-AGENT · CONTROL CONSOLE</div>
         <h1 className="app-header-title">인프라 자동화 파이프라인 관제</h1>
-        <button
-          className="app-path-badge app-path-badge--ok"
-          onClick={() => setPathPanelOpen((v) => !v)}
-          title={config.architecture_agent_dir ?? ""}
-        >
-          <span className="app-path-dot" />
-          {config.architecture_agent_dir}
-        </button>
+        <div className="app-header-actions">
+          <button
+            className="app-path-badge app-path-badge--ok"
+            onClick={() => setView("settings")}
+            title={user.architecture_agent_dir ?? ""}
+          >
+            <span className="app-path-dot" />
+            {user.architecture_agent_dir}
+          </button>
+          <button className="app-header-button" onClick={() => setView("settings")}>
+            환경 설정
+          </button>
+          <span className="app-header-email" title={user.email}>
+            {user.email}
+          </span>
+        </div>
       </header>
-
-      {pathPanelOpen && (
-        <AgentPathSettings
-          config={config}
-          variant="panel"
-          onSaved={setConfig}
-          onClose={() => setPathPanelOpen(false)}
-        />
-      )}
 
       <PipelineDiagram runs={runs} />
 

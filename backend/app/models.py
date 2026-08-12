@@ -10,8 +10,38 @@ class CreateRunRequest(BaseModel):
     prompt: str
 
 
-class SetConfigRequest(BaseModel):
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    architecture_agent_dir: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UpdateSettingsRequest(BaseModel):
     architecture_agent_dir: str
+
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    created_at: str
+    architecture_agent_dir: Optional[str] = None
+    path_exists: bool
+    path_has_agents: bool
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserProfile
 
 
 class RunSummary(BaseModel):

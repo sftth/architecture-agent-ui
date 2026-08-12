@@ -1,7 +1,10 @@
-export interface AgentPathConfig {
+export interface UserProfile {
+  id: string;
+  email: string;
+  created_at: string;
   architecture_agent_dir: string | null;
-  exists: boolean;
-  has_agents: boolean;
+  path_exists: boolean;
+  path_has_agents: boolean;
 }
 
 export interface AgentDef {
