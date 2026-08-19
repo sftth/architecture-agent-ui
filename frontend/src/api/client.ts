@@ -1,4 +1,13 @@
-import type { LogEvent, RunSummary, StageDef, UserProfile } from "../types";
+import type {
+  DirListing,
+  FileText,
+  LogEvent,
+  ModelDef,
+  ProjectDef,
+  RunSummary,
+  StageDef,
+  UserProfile,
+} from "../types";
 
 const TOKEN_KEY = "architecture-agent-ui:token";
 
@@ -125,11 +134,65 @@ export async function getCatalog(): Promise<{ stages: StageDef[] }> {
   return request<{ stages: StageDef[] }>("/api/catalog");
 }
 
-export async function createRun(agentKey: string, prompt: string): Promise<RunSummary> {
+export async function getProjects(): Promise<{ projects: ProjectDef[] }> {
+  return request<{ projects: ProjectDef[] }>("/api/projects");
+}
+
+export async function createRun(
+  agentKey: string,
+  prompt: string,
+  project?: string | null,
+  model?: string | null,
+  effort?: string | null
+): Promise<RunSummary> {
   return request<RunSummary>("/api/runs", {
     method: "POST",
-    body: JSON.stringify({ agent_key: agentKey, prompt }),
+    body: JSON.stringify({
+      agent_key: agentKey,
+      prompt,
+      project: project || null,
+      model: model || null,
+      effort: effort || null,
+    }),
   });
+}
+
+export async function getModels(): Promise<{ models: ModelDef[] }> {
+  return request<{ models: ModelDef[] }>("/api/models");
+}
+
+export async function createProject(name: string): Promise<{ name: string; created: string[] }> {
+  return request("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export async function renameProject(
+  name: string,
+  newName: string
+): Promise<{ name: string; moved: string[] }> {
+  return request(`/api/projects/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body: JSON.stringify({ new_name: newName }),
+  });
+}
+
+/** 지우지 않고 temp/trash 로 옮긴다. 응답의 trash 경로가 어디로 갔는지 알려 준다. */
+export async function deleteProject(
+  name: string
+): Promise<{ name: string; moved: string[]; trash: string }> {
+  return request(`/api/projects/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export async function listWorkspace(path: string): Promise<DirListing> {
+  return request<DirListing>(`/api/workspace/list?path=${encodeURIComponent(path)}`);
+}
+
+export async function readWorkspaceText(path: string): Promise<FileText> {
+  return request<FileText>(`/api/workspace/text?path=${encodeURIComponent(path)}`);
+}
+
+/** <img src>는 헤더를 못 붙이므로 토큰을 쿼리로 실어 보낸다(WebSocket과 같은 방식). */
+export function workspaceRawUrl(path: string): string {
+  return `/api/workspace/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(getToken() ?? "")}`;
 }
 
 export async function listRuns(): Promise<RunSummary[]> {

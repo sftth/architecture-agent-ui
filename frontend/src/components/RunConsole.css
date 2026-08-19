@@ -1,11 +1,14 @@
 .console-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 420px;
-  background: var(--ink-950);
+  /* 부모(.app-sidecolumn)가 정해준 높이 안에서 남는 만큼만 차지한다.
+     min-height:0이 없으면 flex 자식이 내용 높이 밑으로 못 줄어들어 스크롤이 생기지 않는다. */
+  flex: 1;
+  min-height: 0;
+  background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 
@@ -14,17 +17,18 @@
   justify-content: center;
   padding: var(--space-6);
   color: var(--paper-500);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: center;
 }
 
 .console-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--line-cyan-dim);
-  background: var(--ink-900);
+  background: var(--ink-850);
 }
 
 .console-header-main {
@@ -34,12 +38,14 @@
   min-width: 0;
 }
 
+/* 상태 램프. 테두리 한 겹으로 판에 박아 넣은 표시등처럼 보이게 한다. */
 .console-dot {
   flex-shrink: 0;
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--paper-500);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .console-dot--running {
@@ -58,17 +64,26 @@
 .console-title {
   font-family: var(--font-label);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-md);
 }
 
 .console-prompt {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--paper-500);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 46ch;
+}
+
+/* 어느 모델로 돌았는지는 full_prompt에 안 남으므로 여기 따로 적는다. */
+.console-model {
+  margin-left: var(--space-2);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ink-800);
+  color: var(--line-cyan);
 }
 
 .console-stop {
@@ -79,7 +94,7 @@
   color: var(--gate-rose);
   border-radius: var(--radius-sm);
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -91,9 +106,9 @@
   margin-left: auto;
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
 }
 .console-final--success { color: var(--gate-mint); }
 .console-final--error { color: var(--gate-rose); }
@@ -101,17 +116,28 @@
 
 .console-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-3) var(--space-4);
+  overscroll-behavior: contain;
+  /* 로그는 계기반에 파여 들어간 화면처럼 한 단 낮게 둔다. */
+  background: var(--surface-recess);
+  box-shadow: var(--shadow-inset);
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.6;
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
 }
 
+/* ── 이벤트 테이프 ──────────────────────────────────────
+   각 줄의 왼쪽 눈금이 그 이벤트의 종류(도구 호출 / 훅 / 결과 / 오류)를 색으로 남긴다.
+   줄이 쌓이면 눈금이 이어져, 스크롤하지 않고도 이 run이 무엇을 하며 흘러갔는지
+   — 도구를 계속 두드렸는지, 훅에서 걸렸는지, 어디서 붉어졌는지 — 한눈에 읽힌다.
+   장식이 아니라 로그가 이미 가진 정보를 그대로 세워 둔 것이다. */
 .console-line {
   display: flex;
   gap: var(--space-2);
-  padding: 2px 0;
+  padding: 2px 0 2px var(--space-4);
+  border-left: 3px solid transparent;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -131,8 +157,8 @@
 .console-line-label {
   flex-shrink: 0;
   width: 6.5em;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
   opacity: 0.75;
   padding-top: 1px;
 }
@@ -159,4 +185,23 @@
 .line--stderr .console-line-icon,
 .line--stderr .console-line-label { color: var(--gate-rose); }
 .line--raw { opacity: 0.55; }
-.line--end { color: var(--paper-500); border-top: 1px dashed var(--line-cyan-dim); margin-top: 4px; padding-top: 6px; }
+
+/* 테이프 눈금 — 에이전트가 실제로 무엇을 했는지(도구·훅)만 또렷하게 남기고,
+   말하거나 생각한 줄은 흐리게 둔다. 세션 상태·원본 같은 배경 소음도 가장 약한
+   눈금을 주어 테이프가 끊기지 않게 한다(끊기면 눈금이 아니라 결함으로 보인다). */
+.line--system { border-left-color: var(--tick-quiet); }
+.line--raw { border-left-color: var(--tick-quiet); }
+.line--assistant { border-left-color: var(--line-cyan-dim); }
+.line--thinking { border-left-color: var(--line-cyan-dim); }
+.line--tool { border-left-color: var(--signal-amber); }
+.line--tool-result { border-left-color: var(--signal-amber-dim); }
+.line--hook { border-left-color: var(--line-cyan); }
+.line--result { border-left-color: var(--gate-mint); }
+.line--stderr { border-left-color: var(--gate-rose); }
+
+.line--end {
+  color: var(--paper-500);
+  border-top: 1px solid var(--line-cyan-dim);
+  margin-top: 6px;
+  padding-top: 8px;
+}

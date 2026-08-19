@@ -1,7 +1,11 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import current_user, require_agent_dir
 from ..models import CreateRunRequest, RunSummary
+from ..llm_models import check_choice
+from ..projects import project_exists
 from ..runner import run_manager
 from ..users import User
 
@@ -13,8 +17,14 @@ async def create_run(req: CreateRunRequest, user: User = Depends(current_user)):
     if not req.prompt.strip():
         raise HTTPException(400, "prompt is required")
     agent_dir = require_agent_dir(user)
+    # 프롬프트에 그대로 실려 나가는 값이므로 실제 input/ 아래 프로젝트인지 확인한다.
+    if req.project and not project_exists(Path(agent_dir), req.project):
+        raise HTTPException(400, f"input/ 아래에 없는 프로젝트입니다: {req.project}")
+    model, effort = check_choice(req.model or "", req.effort or "")
     try:
-        run = run_manager.create_run(user.id, agent_dir, req.agent_key, req.prompt)
+        run = run_manager.create_run(
+            user.id, agent_dir, req.agent_key, req.prompt, req.project, model, effort
+        )
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     return run.summary()

@@ -2,13 +2,10 @@
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
   padding: var(--space-4);
   scroll-margin-top: var(--space-4);
   transition: border-color 0.6s ease, background 0.6s ease;
-}
-
-.pipeline-highlight-target {
-  border-color: var(--signal-amber) !important;
 }
 
 .stagecard-header {
@@ -20,7 +17,7 @@
 
 .stagecard-index {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--line-cyan);
   padding-top: 2px;
 }
@@ -28,24 +25,23 @@
 .stagecard-title {
   margin: 0;
   font-family: var(--font-label);
-  font-size: 17px;
+  font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: 0.01em;
 }
 
 .stagecard-subtitle {
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--paper-500);
 }
 
 .stagecard-status {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 3px 8px;
+  letter-spacing: var(--tracking-label);
+  padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
 }
@@ -55,129 +51,67 @@
 .stagecard-status--error { color: var(--gate-rose); }
 .stagecard-status--stopped { color: var(--paper-500); }
 
-.stagecard-tabs {
+
+
+
+
+/* ── sub-agent 목록 ─────────────────────────────────────
+   고르는 자리다. 지금 겨누고 있는 것은 왼쪽 선으로 짚어 준다. */
+.agentlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: var(--space-3);
+  flex-direction: column;
+  gap: 2px;
 }
 
-.stagecard-tab {
-  background: transparent;
-  border: 1px solid var(--line-cyan-dim);
-  color: var(--paper-300);
-  border-radius: 999px;
-  padding: 4px 11px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.stagecard-tab:hover {
-  border-color: var(--line-cyan);
-  color: var(--paper-100);
-}
-
-.stagecard-tab--active {
-  background: var(--line-cyan-dim);
-  border-color: var(--line-cyan);
-  color: var(--paper-100);
-}
-
-.stagecard-tab-flag {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--signal-amber);
-  margin-left: 5px;
-  vertical-align: middle;
-}
-
-.stagecard-role {
-  margin: 0 0 var(--space-2);
-  font-size: 12.5px;
-  color: var(--paper-500);
-  cursor: pointer;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.stagecard-role--expanded {
-  -webkit-line-clamp: unset;
-  overflow: visible;
-}
-
-.stagecard-riskline {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--paper-500);
-  margin-bottom: var(--space-2);
-}
-
-.stagecard-riskline--mutating {
-  color: var(--signal-amber);
-}
-
-.stagecard-command {
+.agentrow {
   display: flex;
-  align-items: stretch;
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--ink-950);
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-3);
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--paper-100);
+  text-align: left;
+  cursor: pointer;
 }
 
-.stagecard-command-prefix {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  color: var(--signal-amber);
-  padding: var(--space-2) 0 0 var(--space-3);
+.agentrow:hover {
+  background: var(--ink-850);
 }
 
-.stagecard-command-input {
+.agentrow--on {
+  background: var(--ink-850);
+  border-left-color: var(--line-cyan);
+}
+
+
+.agentrow-key {
   flex: 1;
-  resize: vertical;
-  background: transparent;
-  border: none;
-  color: var(--paper-100);
+  min-width: 0;
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.stagecard-command-input:focus {
-  outline: none;
+.agentrow--on .agentrow-key {
+  color: var(--line-cyan);
 }
 
-.stagecard-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: var(--space-3);
+.agentrow-flag {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--signal-amber-dim);
+  border-radius: 999px;
+  color: var(--signal-amber);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
 }
 
-.stagecard-run {
-  background: var(--signal-amber);
-  color: var(--ink-950);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 18px;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: filter 0.15s ease, opacity 0.15s ease;
-}
-
-.stagecard-run:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.stagecard-run:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
