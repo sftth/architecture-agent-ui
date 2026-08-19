@@ -1,0 +1,116 @@
+/* 오른쪽 아래에 고정된 입력판. 위의 로그와 같은 폭을 쓰되, 로그가 아무리 길어져도
+   이 판은 자리를 내주지 않는다(flex: none 은 App 쪽 레이아웃에서 준다). */
+.composer {
+  position: relative;
+  flex: none;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-2) 6px;
+  background: var(--surface-recess);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-inset);
+}
+
+.composer:focus-within {
+  border-color: var(--line-cyan);
+}
+
+/* 지금 고른 대상이 무엇을 할 수 있는 놈인지 — 적기 전에 먼저 읽히게 위에 둔다. */
+.composer-target {
+  margin: 0 0 4px;
+  padding: 0 var(--space-2);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  color: var(--paper-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-target--mutating {
+  color: var(--signal-amber);
+}
+
+.composer-target-stage {
+  color: var(--line-cyan);
+  margin-right: 6px;
+}
+
+.composer-input {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  max-height: 38vh;
+  padding: 4px var(--space-2) 6px;
+  background: none;
+  border: none;
+  color: var(--paper-100);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  resize: vertical;
+}
+
+.composer-input:focus {
+  outline: none;
+}
+
+.composer-input::placeholder {
+  color: var(--paper-500);
+  opacity: 0.75;
+}
+
+/* 실행 단추가 다음 줄로 떨어지지 않게 한 줄로 고정하고, 대신 칩이 줄어들게 둔다. */
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  padding-top: 4px;
+}
+
+/* 고르는 자리가 아니라 알리는 자리다 — 값이 없으면 눈에 걸리게 둔다. */
+.composer-project {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  color: var(--paper-500);
+  padding: 0 var(--space-2);
+}
+
+.composer-project--empty {
+  color: var(--signal-amber);
+}
+
+.composer-grow {
+  flex: 1;
+}
+
+.composer-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--signal-amber);
+  color: var(--ink-fixed);
+  border: none;
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.composer-run:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.composer-run:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

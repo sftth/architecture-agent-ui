@@ -1,33 +1,67 @@
+/* 화면 전체를 쓰는 3단 틀: 좌측 단계 레일 · 가운데 스테이지 · 우측 로그+입력판.
+   각 칸이 따로 스크롤되고 바깥 페이지는 스크롤되지 않는다. */
 .app-shell {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-7);
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
 }
 
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* 가운데 — 지금 단계의 절차 띠와 스테이지 카드 */
+.app-column {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+/* 오른쪽 — 로그는 남는 높이를 다 쓰고, 입력판은 아래에 붙박이로 남는다 */
+.app-side {
+  flex: none;
+  width: 460px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-left: 1px solid var(--line-cyan-dim);
+}
+
+/* 장비 상단의 이름표. 아래 실선이 계기반의 시작선을 긋는다. */
 .app-header {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line-cyan-dim);
 }
 
 .app-header-eyebrow {
   width: 100%;
+  margin-bottom: -2px;
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
   color: var(--line-cyan);
 }
 
 .app-header-title {
-  margin: 2px 0 0;
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 26px;
-  letter-spacing: -0.01em;
+  margin: 3px 0 0;
+  /* 한글 제목이라 라틴 콘덴스드는 걸리지 않는다. 성격은 굵기와 자간으로 낸다. */
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-2xl);
+  letter-spacing: -0.02em;
 }
 
 .app-loading {
@@ -35,8 +69,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-family: var(--font-label);
+  font-size: var(--text-md);
   color: var(--paper-500);
 }
 
@@ -52,13 +86,13 @@
 
 .app-header-button {
   font-family: var(--font-label);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   background: none;
   border: 1px solid var(--line-cyan-dim);
   border-radius: 999px;
   color: var(--paper-300);
-  padding: 4px 12px;
+  padding: 5px 12px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -70,7 +104,7 @@
 
 .app-header-email {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--paper-500);
   max-width: 200px;
   overflow: hidden;
@@ -84,12 +118,12 @@
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--paper-500);
   background: none;
   border: 1px solid var(--line-cyan-dim);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -112,33 +146,38 @@
 .app-path-badge--ok .app-path-dot { background: var(--gate-mint); }
 .app-path-badge--ok { color: var(--gate-mint); border-color: var(--gate-mint-dim); }
 
-.app-main {
-  display: grid;
-  grid-template-columns: 1fr 420px;
-  gap: var(--space-5);
-  align-items: start;
+.app-stage-empty {
+  margin: 0;
+  padding: var(--space-5);
+  border: 1px dashed var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  font-family: var(--font-label);
+  font-size: var(--text-sm);
+  color: var(--paper-500);
+  text-align: center;
 }
 
-.app-stagecolumn {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.app-sidecolumn {
-  position: sticky;
-  top: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-@media (max-width: 980px) {
-  .app-main {
-    grid-template-columns: 1fr;
+/* 좁은 화면에서는 세로로 쌓되, 입력판은 여전히 로그 바로 아래에 붙어 있게 둔다. */
+@media (max-width: 1100px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
   }
-  .app-sidecolumn {
-    position: static;
+
+  .app-body {
+    flex-direction: column;
+  }
+
+  .app-column {
+    overflow: visible;
+    padding: var(--space-4);
+  }
+
+  .app-side {
+    width: auto;
+    height: 80vh;
+    border-left: none;
+    border-top: 1px solid var(--line-cyan-dim);
+    padding: var(--space-4);
   }
 }

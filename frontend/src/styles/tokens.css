@@ -1,33 +1,72 @@
 /*
-  디자인 컨셉: "청사진(blueprint) 위의 관제 콘솔"
-  architecture-agent는 sub-agent들이 실제 "설계서"를 그리고, Policy Gate를 통과시키고,
-  점수로 평가받아 설치까지 이어지는 도면 제작 -> 검증 파이프라인이다.
-  그 세계관(제도용지, 시안선, 게이트/밸브, 합격/불합격 스탬프)을 그대로 화면 언어로 가져온다.
+  디자인 컨셉: "계기반(instrument panel)"
+  이 화면이 하는 일은 하나다 — sub-agent를 실행시키고, 그것이 실제 서버에 무슨 짓을
+  하는지 지켜보는 것. 그래서 화면은 도면(제도용지)이 아니라 장비의 계기반처럼 다룬다.
+  바탕은 빛나지 않고, 빛은 오직 살아 있는 상태(진행 amber / 합격 mint / 불합격 rose)와
+  실행 로그에서만 나온다. 장식은 두지 않고, 선과 번호는 실제 정보를 담을 때만 쓴다.
+
+  서체 규칙(끝까지 지킨다):
+    mono  = 기계가 쓴 문자열 (경로, 프롬프트, 시각, exit code, 로그)
+    sans  = 사람에게 하는 말 (설명, 안내, 버튼)
+    label = 장비에 새겨진 이름표 (제목, 단계명, 헤더)
 */
 :root {
-  /* Color - blueprint navy base + 시안 제도선 + 상태 3색(진행/합격/불합격) */
-  --ink-950: #0a1420;
-  --ink-900: #0d1826;
-  --ink-850: #101d2e;
-  --ink-800: #16263a;
-  --line-cyan: #3e7692;
-  --line-cyan-dim: #23445a;
-  --paper-100: #e9f0f4;
-  --paper-300: #b9c9d4;
-  --paper-500: #7f97a6;
+  /* Color — petrol 계열 베젤 + 상태 3색. 상태색만 채도를 가진다. */
+  --ink-950: #0a1218; /* 가장 바깥 바탕 */
+  --ink-900: #0e1a22; /* 패널 */
+  --ink-850: #12222c; /* 패널 위 요소 */
+  --ink-800: #172c38; /* 선택/호버 */
+  /* 패널보다 한 단 파인 면(로그 화면, 입력칸). 바탕색을 그대로 쓰면 밝은 테마에서
+     패널과의 차이가 1%도 안 돼 파인 느낌이 사라지므로 따로 둔다. */
+  --surface-recess: #060d12;
+  /* 이벤트 테이프에서 배경 소음(세션 상태·원본)을 표시하는 가장 약한 눈금 */
+  --tick-quiet: #162934;
 
-  --signal-amber: #f2a65a;
+  --line-cyan: #4a8fa8; /* 살아 있는 선 (라벨, 강조) */
+  --line-cyan-dim: #1f3746; /* 계기 사이를 나누는 실선 */
+
+  --paper-100: #e7eff3;
+  --paper-300: #b4c6d0;
+  --paper-500: #7a919e;
+
+  /* amber·cyan으로 꽉 채운 면 위의 글자색. --ink-950은 밝은 테마에서 밝아져 버려
+     같은 자리에 쓰면 대비가 무너지므로, 테마와 무관하게 고정된 어두운 잉크를 둔다. */
+  --ink-fixed: #0a1218;
+
+  --signal-amber: #f2a65a; /* 진행 중 */
   --signal-amber-dim: #7a5a34;
-  --gate-mint: #59c9a5;
+  --gate-mint: #59c9a5; /* 통과 */
   --gate-mint-dim: #2f5f4f;
-  --gate-rose: #e1667c;
+  --gate-rose: #e1667c; /* 실패 */
   --gate-rose-dim: #6a3540;
 
-  /* Type */
-  --font-display: "IBM Plex Mono", ui-monospace, monospace;
-  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
-  --font-body: "IBM Plex Sans", -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* 계기 표면: 위쪽 1px 하이라이트 + 바깥 그림자로 "깎아 놓은 판" 느낌을 만든다.
+     바탕에 무늬를 깔지 않는 대신 깊이는 전부 여기서 나온다. */
+  --edge-hilite: rgba(231, 239, 243, 0.05);
+  --shadow-panel: 0 1px 0 var(--edge-hilite) inset, 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+
+  /* Type — 한글은 Plex Sans KR, 라틴은 각 역할의 앞 서체가 그린다(글자마다 첫 매칭 우선).
+     mono 스택에도 KR을 넣어 둔다: 프로젝트 이름처럼 식별자 자리에 한글이 들어와도
+     시스템 CJK 폰트로 떨어지지 않고 같은 얼굴로 그려진다. */
+  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans KR", "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", "IBM Plex Sans KR", -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, "SFMono-Regular", monospace;
+
+  /* 크기는 이 일곱 단만 쓴다. 12.5 / 11.5 / 10.5 를 섞어 쓰면 눈이 정렬을 못 읽는다. */
+  --text-2xs: 10.5px;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --text-2xl: 24px;
+
+  --leading-tight: 1.35;
+  --leading-body: 1.6;
+
+  /* 자간은 라틴 대문자 마이크로 라벨에만 준다. 한글에 자간을 벌리면 낱자가 흩어진다. */
+  --tracking-label: 0.14em;
 
   /* Scale */
   --radius-sm: 3px;
@@ -39,44 +78,59 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
-
-  --shadow-panel: 0 1px 0 rgba(233, 240, 244, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* 밝은 환경에서는 같은 장비의 흰 계기면. 상태 3색은 그대로 두어 의미가 흔들리지 않게 한다. */
 @media (prefers-color-scheme: light) {
   :root {
-    --ink-950: #eef2f5;
-    --ink-900: #e4eaee;
+    --ink-950: #e8edf0;
+    --ink-900: #f7fafb;
     --ink-850: #ffffff;
-    --ink-800: #f4f7f9;
-    --paper-100: #142230;
-    --paper-300: #3d5566;
-    --paper-500: #5f7889;
+    --ink-800: #eef3f6;
+    --surface-recess: #dde5ea;
+    --tick-quiet: #d3dee4;
+    --paper-100: #12212b;
+    --paper-300: #3b5364;
+    --paper-500: #5e7787;
     --line-cyan: #2f6a86;
-    --line-cyan-dim: #b9d3de;
+    --line-cyan-dim: #c7d8e0;
+    /* 흰 판 위에 흰 하이라이트는 보이지 않으므로 밝은 테마의 깊이는 그림자로만 만든다. */
+    --edge-hilite: transparent;
+    --shadow-panel: 0 1px 2px rgba(18, 33, 43, 0.06), 0 6px 18px rgba(18, 33, 43, 0.08);
+    --shadow-inset: inset 0 1px 3px rgba(18, 33, 43, 0.14);
   }
 }
 
 :root[data-theme="light"] {
-  --ink-950: #eef2f5;
-  --ink-900: #e4eaee;
+  --ink-950: #e8edf0;
+  --ink-900: #f7fafb;
   --ink-850: #ffffff;
-  --ink-800: #f4f7f9;
-  --paper-100: #142230;
-  --paper-300: #3d5566;
-  --paper-500: #5f7889;
+  --ink-800: #eef3f6;
+  --surface-recess: #dde5ea;
+  --tick-quiet: #d3dee4;
+  --paper-100: #12212b;
+  --paper-300: #3b5364;
+  --paper-500: #5e7787;
   --line-cyan: #2f6a86;
-  --line-cyan-dim: #b9d3de;
+  --line-cyan-dim: #c7d8e0;
+  --edge-hilite: transparent;
+  --shadow-panel: 0 1px 2px rgba(18, 33, 43, 0.06), 0 6px 18px rgba(18, 33, 43, 0.08);
+  --shadow-inset: inset 0 1px 3px rgba(18, 33, 43, 0.14);
 }
 
 :root[data-theme="dark"] {
-  --ink-950: #0a1420;
-  --ink-900: #0d1826;
-  --ink-850: #101d2e;
-  --ink-800: #16263a;
-  --paper-100: #e9f0f4;
-  --paper-300: #b9c9d4;
-  --paper-500: #7f97a6;
-  --line-cyan: #3e7692;
-  --line-cyan-dim: #23445a;
+  --ink-950: #0a1218;
+  --ink-900: #0e1a22;
+  --ink-850: #12222c;
+  --ink-800: #172c38;
+  --surface-recess: #060d12;
+  --tick-quiet: #162934;
+  --paper-100: #e7eff3;
+  --paper-300: #b4c6d0;
+  --paper-500: #7a919e;
+  --line-cyan: #4a8fa8;
+  --line-cyan-dim: #1f3746;
+  --edge-hilite: rgba(231, 239, 243, 0.05);
+  --shadow-panel: 0 1px 0 var(--edge-hilite) inset, 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 }

@@ -1,0 +1,184 @@
+/* 스테이지 이름 한 줄 + 그 아래 plan → impl → eval 한 줄.
+   전에는 헤더에 flex-basis:100%를 줘서 줄을 넘기려 했는데, 뒤따르는 셀이 flex-basis:0 이라
+   "0폭이면 이 줄에 들어간다"고 판정되어 줄바꿈이 일어나지 않고 오른쪽으로 밀려났다.
+   줄은 래퍼로 나눈다 — wrap 규칙에 기대지 않는다. */
+.harness {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+
+.harness-stage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.harness-stage-name {
+  font-family: var(--font-label);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper-100);
+}
+
+.harness-stage-note {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.harness-flow {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.harness-cell {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.harness-box {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-850);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-sm);
+}
+
+/* 상태는 지금 도는 것 하나만 빛난다. 끝난 것은 테두리 색만 남긴다. */
+.harness-box--running {
+  border-color: var(--signal-amber);
+  animation: harness-breathe 1.6s ease-in-out infinite;
+}
+.harness-box--success { border-color: var(--gate-mint); }
+.harness-box--error { border-color: var(--gate-rose); }
+.harness-box--stopped { border-color: var(--paper-500); }
+
+@keyframes harness-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(242, 166, 90, 0.1); }
+  50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0.18); }
+}
+
+.harness-role {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.harness-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--line-cyan);
+}
+
+.harness-live {
+  font-family: var(--font-label);
+  font-size: var(--text-2xs);
+  color: var(--signal-amber);
+}
+
+.harness-agents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.harness-agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--paper-300);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.harness-agent:hover {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+.harness-agent--on {
+  border-left-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.harness-agent--running {
+  color: var(--signal-amber);
+}
+
+.harness-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--signal-amber);
+  animation: harness-blink 1.3s ease-in-out infinite;
+}
+
+@keyframes harness-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.harness-none,
+.harness-more {
+  margin: 0;
+  padding: 3px 6px;
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.harness-arrow {
+  flex: none;
+  align-self: center;
+  width: 16px;
+  height: 1px;
+  margin: 0 var(--space-2);
+  border-top: 1px dashed var(--line-cyan-dim);
+}
+
+@media (max-width: 860px) {
+  .harness-flow {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .harness-cell {
+    flex-direction: column;
+  }
+  .harness-arrow {
+    width: 1px;
+    height: 12px;
+    margin: 4px auto;
+    border-top: none;
+    border-left: 1px dashed var(--line-cyan-dim);
+  }
+}

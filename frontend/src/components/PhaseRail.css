@@ -1,0 +1,154 @@
+.rail {
+  flex: none;
+  width: 224px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ink-900);
+  border-right: 1px solid var(--line-cyan-dim);
+}
+
+.rail-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3) var(--space-2);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  color: var(--line-cyan);
+}
+
+.rail-manage {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--paper-500);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.rail-manage:hover {
+  color: var(--paper-100);
+}
+
+/* 칩이 레일 폭을 꽉 채우고, 메뉴는 그 아래로 열린다. */
+.rail-project {
+  position: relative;
+  flex: none;
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.rail-project .chip {
+  width: 100%;
+  justify-content: space-between;
+  border-color: var(--line-cyan-dim);
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+}
+
+.rail-project .menu {
+  left: var(--space-2);
+  width: 300px;
+}
+
+.rail-list {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--paper-300);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.rail-item:hover {
+  border-color: var(--line-cyan-dim);
+  color: var(--paper-100);
+}
+
+/* 지금 보고 있는 단계 — 왼쪽 마커로 짚어 준다(상태 램프와 겹치지 않게). */
+.rail-item--on {
+  background: var(--ink-850);
+  border-color: var(--line-cyan-dim);
+  box-shadow: inset 3px 0 0 var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.rail-num {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--line-cyan);
+}
+
+.rail-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rail-name {
+  font-family: var(--font-label);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.rail-caption {
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  color: var(--paper-500);
+  word-break: keep-all;
+}
+
+.rail-lamp {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-cyan-dim);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.rail-lamp--running {
+  background: var(--signal-amber);
+  animation: rail-breathe 1.6s ease-in-out infinite;
+}
+.rail-lamp--success { background: var(--gate-mint); }
+.rail-lamp--error { background: var(--gate-rose); }
+.rail-lamp--stopped { background: var(--paper-500); }
+
+@keyframes rail-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(242, 166, 90, 0.15); }
+  50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0.25); }
+}
+
+/* 실행 기록은 남는 높이를 다 쓰고 그 안에서 스크롤한다. */
+.rail-history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+}

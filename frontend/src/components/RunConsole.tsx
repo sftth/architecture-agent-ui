@@ -33,16 +33,30 @@ export default function RunConsole({
   onStop: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 사용자가 위쪽 로그를 읽고 있을 때 새 이벤트가 강제로 맨 아래로 끌어내리지 않게 한다.
+  const stickToBottom = useRef(true);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  }
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [events.length]);
+
+  // run을 바꾸면 다시 실시간 추적으로 되돌린다.
+  useEffect(() => {
+    stickToBottom.current = true;
+  }, [run?.id]);
 
   if (!run) {
     return (
       <div className="console-panel console-panel--empty">
-        <p>왼쪽 스테이지 카드에서 에이전트를 선택하고 실행하면 여기에 실시간 로그가 표시됩니다.</p>
+        <p>아래 입력판에서 sub-agent를 고르고 지시문을 보내면
+          여기에 실시간 로그가 표시됩니다.</p>
       </div>
     );
   }
@@ -56,7 +70,15 @@ export default function RunConsole({
             <div className="console-title">
               {run.stage_title} · {run.agent_label}
             </div>
-            <div className="console-prompt">{run.full_prompt}</div>
+            <div className="console-prompt">
+              {run.full_prompt}
+              {run.model && (
+                <span className="console-model">
+                  {run.model}
+                  {run.effort ? ` · ${run.effort}` : ""}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         {run.status === "running" && (
@@ -72,7 +94,7 @@ export default function RunConsole({
         )}
       </header>
 
-      <div className="console-body" ref={scrollRef}>
+      <div className="console-body" ref={scrollRef} onScroll={handleScroll}>
         {events.map((ev) => {
           const meta = KIND_META[ev.kind] ?? KIND_META.raw;
           return (

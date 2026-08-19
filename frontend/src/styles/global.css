@@ -8,31 +8,49 @@ body,
   height: 100%;
 }
 
+/* 바탕에는 아무 무늬도 두지 않는다. 계기반의 베젤처럼 조용히 뒤로 물러나 있고,
+   깊이는 패널의 모서리 하이라이트와 그림자에서만 나온다. */
 body {
   margin: 0;
-  background:
-    linear-gradient(var(--line-cyan-dim) 1px, transparent 1px) 0 0 / 100% 32px,
-    linear-gradient(90deg, var(--line-cyan-dim) 1px, transparent 1px) 0 0 / 32px 100%,
-    var(--ink-950);
-  background-blend-mode: overlay, overlay, normal;
+  background: var(--ink-950);
   color: var(--paper-100);
   font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-:root[data-theme="light"] body {
-  background-blend-mode: soft-light, soft-light, normal;
+/* 스크롤 되는 칸은 모두 어두운 톤의 얇은 막대를 쓴다. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-cyan-dim) transparent;
 }
 
-@media (prefers-color-scheme: light) {
-  body {
-    background-blend-mode: soft-light, soft-light, normal;
-  }
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-cyan-dim);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--line-cyan);
+  background-clip: content-box;
 }
 
 ::selection {
   background: var(--signal-amber);
-  color: var(--ink-950);
+  color: var(--ink-fixed);
 }
 
 a {

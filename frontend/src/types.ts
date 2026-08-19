@@ -22,6 +22,24 @@ export interface StageDef {
   agents: AgentDef[];
 }
 
+/** input/{project}/ 아래의 실행 대상 프로젝트. */
+export interface ProjectDef {
+  key: string;
+  /** input/{project}/doc/ 원본 문서 파일명 */
+  docs: string[];
+  /** input/{project}/img/{doc_id}/ — 변환이 끝난 문서 id */
+  image_docs: string[];
+}
+
+/** 실행에 쓸 모델 선택지 (claude CLI --model / --effort) */
+export interface ModelDef {
+  value: string;
+  label: string;
+  note: string;
+  /** 이 모델이 받는 effort 단계. 비어 있으면 effort 미지원. */
+  efforts: string[];
+}
+
 export type RunStatus = "running" | "success" | "error" | "stopped";
 
 export interface RunSummary {
@@ -30,6 +48,9 @@ export interface RunSummary {
   agent_label: string;
   stage_key: string;
   stage_title: string;
+  project: string | null;
+  model: string | null;
+  effort: string | null;
   prompt: string;
   full_prompt: string;
   status: RunStatus;
@@ -58,4 +79,28 @@ export interface LogEvent {
   parent_tool_use_id: string | null;
   data: unknown;
   text: string | null;
+}
+
+/** 작업 공간(input/output/report) 파일 한 건 */
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: "dir" | "text" | "image" | "binary";
+  size: number | null;
+  modified: string;
+}
+
+export interface DirListing {
+  path: string;
+  /** 아직 산출물이 없는 경로는 오류가 아니라 빈 상태다. */
+  exists: boolean;
+  entries: FileEntry[];
+}
+
+export interface FileText {
+  path: string;
+  kind: "text" | "binary";
+  size: number;
+  text: string | null;
+  truncated: boolean;
 }

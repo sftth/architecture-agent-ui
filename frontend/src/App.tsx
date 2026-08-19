@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import PipelineDiagram from "./components/PipelineDiagram";
+import PhaseRail from "./components/PhaseRail";
+import HarnessStrip from "./components/HarnessStrip";
 import StageCard from "./components/StageCard";
+import IoPanel from "./components/IoPanel";
 import RunConsole from "./components/RunConsole";
-import RunHistory from "./components/RunHistory";
+import Composer from "./components/Composer";
+import ProjectManager from "./components/ProjectManager";
+import ProjectGate from "./components/ProjectGate";
 import AuthScreen from "./components/AuthScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import {
@@ -10,20 +14,45 @@ import {
   createRun,
   fetchMe,
   getCatalog,
+  getModels,
+  getProjects,
   getToken,
   listRuns,
   logout,
   openRunSocket,
   stopRun,
 } from "./api/client";
-import { LogEvent, RunSummary, StageDef, UserProfile } from "./types";
+import {
+  AgentDef,
+  LogEvent,
+  ModelDef,
+  ProjectDef,
+  RunSummary,
+  StageDef,
+  UserProfile,
+} from "./types";
+import { PhaseId, phaseIdForStage, stagesForPhase } from "./phases";
 import "./App.css";
 
 export default function App() {
   // undefined: 세션 확인 중 / null: 로그아웃 상태
   const [user, setUser] = useState<UserProfile | null | undefined>(undefined);
   const [view, setView] = useState<"console" | "settings">("console");
+  const [phase, setPhase] = useState<PhaseId>("analyze");
   const [stages, setStages] = useState<StageDef[]>([]);
+  // input/{project} 격리 구조: 실행 대상 프로젝트를 골라 프롬프트에 함께 실어 보낸다.
+  const [projects, setProjects] = useState<ProjectDef[]>([]);
+  const [project, setProject] = useState<string>("");
+  // 지시문 입력판이 전역이라 대상과 본문도 여기서 들고 있는다.
+  const [agentKey, setAgentKey] = useState<string>("");
+  const [prompt, setPrompt] = useState<string>("");
+  const [managingProjects, setManagingProjects] = useState(false);
+  // 프로젝트 없이 실행하려 할 때 앞을 막는 알림
+  const [gateOpen, setGateOpen] = useState(false);
+  // 실행에 쓸 모델·effort (claude CLI --model / --effort). 빈 값이면 CLI 기본값.
+  const [models, setModels] = useState<ModelDef[]>([]);
+  const [model, setModel] = useState<string>("");
+  const [effort, setEffort] = useState<string>("");
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -34,7 +63,16 @@ export default function App() {
     closeSocketRef.current = undefined;
     setUser(null);
     setView("console");
+    setPhase("analyze");
     setStages([]);
+    setProjects([]);
+    setProject("");
+    setAgentKey("");
+    setPrompt("");
+    setManagingProjects(false);
+    setGateOpen(false);
+    setModel("");
+    setEffort("");
     setRunsById({});
     setEventsByRun({});
     setActiveRunId(null);
@@ -58,11 +96,29 @@ export default function App() {
 
   const isReady = Boolean(user?.path_exists && user?.path_has_agents);
 
+  const reloadProjects = useCallback(async (select?: string) => {
+    try {
+      const res = await getProjects();
+      setProjects(res.projects);
+      // 이름이 바뀌었거나 지워졌으면 고른 값도 따라 바꾼다.
+      if (select !== undefined) setProject(select);
+      else setProject((current) => (res.projects.some((p) => p.key === current) ? current : ""));
+    } catch {
+      setProjects([]);
+    }
+  }, []);
+
+
   useEffect(() => {
     if (!isReady) return;
     getCatalog()
       .then((res) => setStages(res.stages))
       .catch(() => setStages([]));
+    // input/ 이 없는 저장소도 있으므로 실패해도 콘솔 전체를 막지 않는다(선택 항목).
+    void reloadProjects();
+    getModels()
+      .then((res) => setModels(res.models))
+      .catch(() => setModels([]));
     listRuns()
       .then((runs) => {
         const map: Record<string, RunSummary> = {};
@@ -99,15 +155,36 @@ export default function App() {
     closeSocketRef.current = close;
   }
 
-  async function handleRun(agentKey: string, prompt: string) {
-    const run = await createRun(agentKey, prompt);
+  async function handleRun() {
+    if (!agentKey || !prompt.trim()) return;
+    // 프로젝트를 안 고르면 에이전트가 되묻다 끝나므로, 보내기 전에 붙잡는다.
+    if (!project) {
+      setGateOpen(true);
+      return;
+    }
+    await startRun(project);
+  }
+
+  async function startRun(withProject: string) {
+    setGateOpen(false);
+    const run = await createRun(agentKey, prompt, withProject, model, effort);
     setRunsById((prev) => ({ ...prev, [run.id]: run }));
     setActiveRunId(run.id);
     connect(run.id);
   }
 
+  /** 카탈로그 어디에 있는 agent든 고를 수 있다. 다른 단계 것이면 그 단계로 함께 넘어간다. */
+  function handleSelectAgent(key: string) {
+    setAgentKey(key);
+    const stage = stages.find((s) => s.agents.some((a) => a.key === key));
+    if (stage) setPhase(phaseIdForStage(stage.key));
+  }
+
   function handleSelectHistory(id: string) {
     setActiveRunId(id);
+    // 히스토리에서 고른 run이 지금 보고 있지 않은 단계 소속이면 그 단계로 함께 전환한다.
+    const stageKey = runsById[id]?.stage_key;
+    if (stageKey) setPhase(phaseIdForStage(stageKey));
     if (!eventsByRun[id] || runsById[id]?.status === "running") {
       connect(id);
     }
@@ -131,6 +208,25 @@ export default function App() {
   const runs = useMemo(() => Object.values(runsById), [runsById]);
   const activeRun = activeRunId ? runsById[activeRunId] : undefined;
   const activeEvents = activeRunId ? eventsByRun[activeRunId] ?? [] : [];
+  // §번호는 카탈로그 전체 기준으로 매겨, 단계를 전환해도 같은 stage가 같은 번호를 유지한다.
+  const visibleStages = useMemo(
+    () => stagesForPhase(stages, phase).map((stage) => ({ stage, index: stages.indexOf(stage) })),
+    [stages, phase],
+  );
+
+  const agentStage: StageDef | undefined = useMemo(
+    () => stages.find((stage) => stage.agents.some((a) => a.key === agentKey)),
+    [stages, agentKey],
+  );
+  const agent: AgentDef | undefined = agentStage?.agents.find((a) => a.key === agentKey);
+
+  // 단계를 옮기면 그 단계의 첫 sub-agent를 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
+  // 카탈로그가 아직 없거나 이 단계에 sub-agent가 없으면 비워 둔다(칩에 "대상 없음"으로 보인다).
+  useEffect(() => {
+    if (agentKey && agentStage && phaseIdForStage(agentStage.key) === phase) return;
+    const first = visibleStages[0]?.stage.agents[0]?.key;
+    if (first) setAgentKey(first);
+  }, [phase, agentKey, agentStage, visibleStages]);
 
   function latestRunForStage(stageKey: string): RunSummary | undefined {
     const candidates = runs.filter((r) => r.stage_key === stageKey);
@@ -181,26 +277,93 @@ export default function App() {
         </div>
       </header>
 
-      <PipelineDiagram runs={runs} />
+      <div className="app-body">
+        <PhaseRail
+          runs={runs}
+          activePhase={phase}
+          onSelectPhase={setPhase}
+          activeRunId={activeRunId}
+          onSelectRun={handleSelectHistory}
+          project={project}
+          projects={projects}
+          onSelectProject={setProject}
+          onManageProjects={() => setManagingProjects(true)}
+        />
 
-      <main className="app-main">
-        <div className="app-stagecolumn">
-          {stages.map((stage, i) => (
+        <main className="app-column">
+          <HarnessStrip
+            stages={visibleStages.map(({ stage }) => stage)}
+            runs={runs}
+            selectedAgent={agentKey}
+            onSelectAgent={setAgentKey}
+          />
+
+          {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 카드 목록이 긴 단계에서도
+              바로 눈에 들도록 절차 띠 바로 아래에 둔다. */}
+          <IoPanel phase={phase} project={project} activeRun={activeRun} />
+
+          {visibleStages.map(({ stage, index }) => (
             <StageCard
               key={stage.key}
               stage={stage}
-              index={i}
+              index={index}
+              selectedAgent={agentKey}
+              onSelectAgent={setAgentKey}
               runningRun={latestRunForStage(stage.key)}
-              onRun={handleRun}
             />
           ))}
-        </div>
+          {/* 카탈로그가 아직 안 왔거나 실패한 상태(stages 비어 있음)를 "이 단계엔 없음"으로
+              오해시키지 않도록, 카탈로그가 실제로 로드된 뒤에만 빈 단계를 알린다. */}
+          {stages.length > 0 && visibleStages.length === 0 && (
+            <p className="app-stage-empty">이 단계에 해당하는 sub-agent가 없습니다.</p>
+          )}
 
-        <aside className="app-sidecolumn">
+        </main>
+
+        <aside className="app-side">
           <RunConsole run={activeRun} events={activeEvents} onStop={handleStop} />
-          <RunHistory runs={runs} activeRunId={activeRunId} onSelect={handleSelectHistory} />
+          <Composer
+            value={prompt}
+            onChange={setPrompt}
+            onRun={handleRun}
+            running={activeRun?.status === "running"}
+            stages={stages}
+            agent={agent}
+            agentStage={agentStage}
+            onSelectAgent={handleSelectAgent}
+            project={project}
+            models={models}
+            model={model}
+            effort={effort}
+            onChangeModel={(nextModel, nextEffort) => {
+              setModel(nextModel);
+              setEffort(nextEffort);
+            }}
+          />
         </aside>
-      </main>
+      </div>
+
+      {gateOpen && (
+        <ProjectGate
+          projects={projects}
+          agentKey={agentKey}
+          onPick={(picked) => {
+            setProject(picked);
+            void startRun(picked);
+          }}
+          onRunAnyway={() => void startRun("")}
+          onClose={() => setGateOpen(false)}
+        />
+      )}
+
+      {managingProjects && (
+        <ProjectManager
+          projects={projects}
+          selected={project}
+          onClose={() => setManagingProjects(false)}
+          onChanged={(select) => void reloadProjects(select)}
+        />
+      )}
     </div>
   );
 }

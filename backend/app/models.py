@@ -8,6 +8,19 @@ RunStatus = Literal["running", "success", "error", "stopped"]
 class CreateRunRequest(BaseModel):
     agent_key: str
     prompt: str
+    # input/{project} 격리 구조에 맞춰 실행 대상 프로젝트를 함께 보낸다(선택).
+    project: Optional[str] = None
+    # 빈 값이면 claude CLI 기본 모델/effort를 그대로 쓴다.
+    model: Optional[str] = None
+    effort: Optional[str] = None
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+
+
+class RenameProjectRequest(BaseModel):
+    new_name: str
 
 
 class RegisterRequest(BaseModel):
@@ -50,6 +63,9 @@ class RunSummary(BaseModel):
     agent_label: str
     stage_key: str
     stage_title: str
+    project: Optional[str] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
     prompt: str
     full_prompt: str
     status: RunStatus

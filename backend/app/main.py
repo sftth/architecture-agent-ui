@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import auth, catalog, runs, settings, ws
+from .routes import auth, catalog, runs, settings, workspace, ws
 
 app = FastAPI(title="architecture-agent-ui backend")
 
@@ -16,6 +16,7 @@ app.include_router(auth.router)
 app.include_router(settings.router)
 app.include_router(catalog.router)
 app.include_router(runs.router)
+app.include_router(workspace.router)
 app.include_router(ws.router)
 
 
