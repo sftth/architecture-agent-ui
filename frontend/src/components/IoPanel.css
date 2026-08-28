@@ -57,97 +57,104 @@
   color: var(--paper-500);
 }
 
-/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
-.iogroup {
-  overflow-x: auto;
-}
-
-.io-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* Input 표 하나, Output 표 하나 — 위아래로 쌓는다. 나란히 두면 좁은 칸에서
+   파일 이름이 둘 다 잘려 "이름을 읽는" 표의 일이 안 된다. */
+.io-stack {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
-.io-side {
+.iot {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 
-/* 들어온 것과 나간 것을 색으로 갈라 둔다 — 실행 전후로 무엇이 늘었는지 보기 쉽게. */
-.io-side-label {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--line-cyan);
+.iot-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line-cyan-dim);
 }
 
-.io-side-label--out {
+/* 들어온 것과 나간 것을 색으로 갈라 둔다 — 실행 전후로 무엇이 늘었는지 보기 쉽게. */
+.iot-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--line-cyan);
+}
+
+.iot--output .iot-title {
   color: var(--gate-mint);
+}
+
+.iot--output .iot-head {
   border-bottom-color: var(--gate-mint-dim);
 }
 
-.iogroup {
-  min-width: 0;
+.iot-grow {
+  flex: 1;
 }
 
-.iogroup-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.iogroup-label {
-  font-family: var(--font-label);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--paper-300);
-}
-
-.iogroup-up {
+.iot-up {
+  flex: none;
   background: none;
   border: none;
+  padding: 0;
   color: var(--line-cyan);
   font-family: var(--font-label);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   cursor: pointer;
-  padding: 0;
 }
 
-.iogroup-path {
+.iot-count {
+  flex: none;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--paper-500);
-  margin-bottom: 4px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-.iogroup-empty,
-.iogroup-error {
-  margin: 0;
+.iot-empty,
+.iot-error {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--paper-500);
 }
 
-.iogroup-error {
+.iot-error {
   color: var(--gate-rose);
 }
 
-.iogroup-count {
-  margin-left: auto;
+/* 아직 안 만들어진 경로. 경로 자체는 보여 줘야 어디에 넣으면 되는지 알 수 있다. */
+.iot-paths {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.iot-path {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--paper-500);
+}
+
+.iot-path em {
+  font-style: normal;
+  color: var(--line-cyan-dim);
+}
+
+/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
+.iot-scroll {
+  overflow-x: auto;
 }
 
 /* ── 파일 표 ─────────────────────────────────────────────
    이름만 나열하면 "언제 생긴 것인지 / 얼마나 큰지"를 알 수 없어 결과 확인이 안 된다.
-   종류·크기·수정 시각을 같은 자리에 세우고, 방금 돌린 실행 이후에 바뀐 줄은 표시한다. */
+   위치·크기·수정 시각을 같은 자리에 세우고, 방금 돌린 실행 이후에 바뀐 줄은 표시한다. */
 .iotable {
   width: 100%;
   border-collapse: collapse;
@@ -155,8 +162,8 @@
 }
 
 .iotable thead th {
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--line-cyan-dim);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--tick-quiet);
   color: var(--paper-500);
   font-family: var(--font-label);
   font-size: var(--text-2xs);
@@ -219,7 +226,7 @@
   white-space: nowrap;
 }
 
-.iotable-kind,
+.iotable-where,
 .iotable-size,
 .iotable-time {
   color: var(--paper-500);
@@ -252,20 +259,66 @@
   color: var(--paper-100);
 }
 
-@media (max-width: 720px) {
-  .io-blank {
-  margin: 0;
-  padding: var(--space-4) var(--space-2);
-  font-size: var(--text-sm);
+/* 단계마다 정해 둔 경로 말고 사용자가 직접 지목하는 자리. */
+.io-pick {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.io-pick-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--surface-recess);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-sm);
+  color: var(--paper-100);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.io-pick-input:focus {
+  outline: none;
+  border-color: var(--line-cyan);
+}
+
+.io-pick-input::placeholder {
+  font-family: var(--font-body);
   color: var(--paper-500);
 }
 
-/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
-.iogroup {
-  overflow-x: auto;
+.io-pick-go,
+.io-pick-clear {
+  flex: none;
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
 }
 
-.io-grid {
-    grid-template-columns: 1fr;
-  }
+.io-pick-go:hover,
+.io-pick-clear:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.io-pick-clear {
+  border-color: var(--line-cyan);
+  color: var(--line-cyan);
+}
+
+/* 지정 경로에서 온 줄은 눈에 띄게 — 이번 작업의 입력이 여기일 때가 많다. */
+.ioact--use {
+  border-color: var(--gate-mint-dim);
+  color: var(--gate-mint);
+}
+
+.ioact--use:hover {
+  border-color: var(--gate-mint);
+  color: var(--gate-mint);
 }

@@ -207,22 +207,76 @@ export async function stopRun(runId: string): Promise<void> {
   await request<{ stopped: boolean }>(`/api/runs/${runId}/stop`, { method: "POST" });
 }
 
+export async function renameRun(runId: string, title: string): Promise<RunSummary> {
+  return request<RunSummary>(`/api/runs/${runId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
+/** 도는 중이면 서버가 먼저 멈춘 뒤 지운다. */
+export async function deleteRun(runId: string): Promise<void> {
+  await request<void>(`/api/runs/${runId}`, { method: "DELETE" });
+}
+
 // WebSocket은 브라우저에서 헤더를 붙일 수 없어 토큰을 쿼리스트링으로 넘긴다.
+/**
+ * 로그 스트림을 연다.
+ *
+ * 실패도 반드시 이벤트로 흘려보낸다. 전에는 서버가 "run not found"를 보내도 null만
+ * 넘겨 App이 그대로 버렸고, 화면에는 "연결 중"만 영원히 남아 무엇이 잘못됐는지
+ * 알 방법이 없었다. 끊긴 것은 끊겼다고 로그에 적혀야 한다.
+ */
 export function openRunSocket(runId: string, onEvent: (event: LogEvent | null) => void): () => void {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(
     `${protocol}://${window.location.host}/ws/runs/${runId}?token=${encodeURIComponent(getToken() ?? "")}`
   );
+  // 정상 종료(run_end)거나 우리가 스스로 닫은 경우엔 onclose에서 또 알리지 않는다.
+  let settled = false;
+
+  const report = (text: string) => {
+    settled = true;
+    onEvent({
+      seq: Number.MAX_SAFE_INTEGER,
+      ts: new Date().toISOString(),
+      kind: "stderr",
+      parent_tool_use_id: null,
+      data: null,
+      text,
+    });
+    onEvent(null);
+  };
+
   socket.onmessage = (msg) => {
     const parsed = JSON.parse(msg.data) as LogEvent;
-    if ((parsed as { kind: string }).kind === "error") {
-      onEvent(null);
+    const kind = (parsed as { kind: string }).kind;
+    if (kind === "error") {
+      const detail = parsed.text ?? "";
+      report(
+        detail === "run not found"
+          ? "이 세션의 로그가 서버에 없습니다. 실행 기록은 백엔드 메모리에만 있어, 백엔드가 다시 뜨면 사라집니다."
+          : detail === "unauthorized"
+            ? "로그인이 만료되어 로그를 받을 수 없습니다. 다시 로그인하세요."
+            : `로그 연결이 거부되었습니다: ${detail}`,
+      );
       return;
     }
     onEvent(parsed);
     if (parsed.kind === "run_end") {
+      settled = true;
       onEvent(null);
     }
   };
-  return () => socket.close();
+
+  // onerror 뒤에는 반드시 onclose가 따라오므로, 알리는 것은 한쪽에서만 한다.
+  socket.onclose = () => {
+    if (settled) return;
+    report("로그 연결이 끊어졌습니다. 백엔드가 살아 있는지 확인하세요.");
+  };
+
+  return () => {
+    settled = true;
+    socket.close();
+  };
 }

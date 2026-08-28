@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PHASES, PhaseId, PhaseIo, ioPath } from "../phases";
-import { DirListing, FileEntry, RunSummary } from "../types";
+import { FileEntry, RunSummary } from "../types";
 import { listWorkspace, workspaceRawUrl } from "../api/client";
 import FilePreview from "./FilePreview";
 import "./IoPanel.css";
@@ -26,29 +26,40 @@ function timeText(iso: string): string {
   }
 }
 
-const KIND_TEXT: Record<FileEntry["kind"], string> = {
-  dir: "폴더",
-  text: "문서",
-  image: "이미지",
-  binary: "파일",
-};
+/** 표 한 줄 — 어느 경로에서 온 것인지(io)를 붙여 둔다. 두 경로를 한 표에 합치기 때문. */
+interface Row {
+  io: PhaseIo;
+  /** 지금 이 경로에서 보고 있는 자리(하위 폴더로 들어갔으면 그 자리) */
+  here: string;
+  entry: FileEntry;
+}
 
 /**
  * 이 단계가 무엇을 받아 무엇을 냈는지 파일로 확인하는 칸.
  * 실행 로그는 에이전트가 "했다"고 말한 것이고, 여기 표에 있는 것이 실제로 남은 것이다.
- * 방금 돌린 run 이후에 바뀐 파일에는 표시를 달아, 이번 실행의 결과만 골라 볼 수 있게 한다.
+ *
+ * cowork-agent와 같은 형태로 세운다 — 경로별로 칸을 쪼개지 않고 Input 표 하나, Output 표
+ * 하나. 이 단계의 입력 경로가 둘(doc·img)이든 산출 경로가 셋(report·scripts·doc)이든
+ * 사람이 묻는 것은 "뭐가 들어갔고 뭐가 나왔나" 하나이므로, 여러 경로는 한 표로 합치고
+ * 어디서 왔는지는 '위치' 칸으로만 알린다.
  */
 export default function IoPanel({
   phase,
   project,
   activeRun,
+  onUsePath,
 }: {
   phase: PhaseId;
   project: string;
   activeRun?: RunSummary;
+  /** 파일 경로를 지시문에 넣어 준다 — 이 화면에서 고른 것이 곧 작업 입력이 되도록. */
+  onUsePath?: (path: string) => void;
 }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [preview, setPreview] = useState<FileEntry | null>(null);
+  // 단계마다 정해 둔 경로 말고, 사용자가 직접 지목한 자리. 여기가 입력이 될 때가 많다.
+  const [custom, setCustom] = useState("");
+  const [draft, setDraft] = useState("");
   const current = PHASES.find((p) => p.id === phase);
 
   // run이 끝나면 산출물이 생겼을 때다 — 한 번 다시 읽는다.
@@ -63,52 +74,83 @@ export default function IoPanel({
       <header className="io-header">
         <h3 className="io-title">입력 · 산출물</h3>
         <span className="io-note">
-          {project ? `${project} 기준` : "프로젝트를 고르면 경로가 정해집니다"}
-          {activeRun && ` · ${new Date(activeRun.started_at).toLocaleTimeString("ko-KR", { hour12: false })} 실행 이후 바뀐 파일에 표시`}
+          {project || "프로젝트 없음"}
+          {activeRun &&
+            ` · ${new Date(activeRun.started_at).toLocaleTimeString("ko-KR", {
+              hour12: false,
+            })} 이후 변경 표시`}
         </span>
         <button
           type="button"
           className="io-reload"
           onClick={() => setReloadKey((k) => k + 1)}
-          disabled={!project}
+          disabled={!project && !custom}
         >
           새로고침
         </button>
       </header>
 
-      {!project ? (
-        <p className="io-blank">
-          왼쪽 위에서 프로젝트를 고르면 이 단계의 입력·산출물 경로가 정해집니다.
-        </p>
-      ) : (
-      <div className="io-grid">
-        <div className="io-side">
-          <div className="io-side-label">입력</div>
-          {current.input.map((io) => (
-            <IoGroup
-              key={io.path}
-              io={io}
-              project={project}
-              reloadKey={reloadKey}
-              since={activeRun?.started_at}
-              onOpen={setPreview}
-            />
-          ))}
-        </div>
-        <div className="io-side">
-          <div className="io-side-label io-side-label--out">산출물</div>
-          {current.output.map((io) => (
-            <IoGroup
-              key={io.path}
-              io={io}
-              project={project}
-              reloadKey={reloadKey}
-              since={activeRun?.started_at}
-              onOpen={setPreview}
-            />
-          ))}
-        </div>
+      {/* 작업 입력이 늘 이 단계의 정해진 자리에 있는 것은 아니다. 회의록이든 임시 원고든
+          다른 프로젝트의 산출물이든, 지목한 자리를 그대로 입력으로 쓸 수 있어야 한다. */}
+      <div className="io-pick">
+        <input
+          className="io-pick-input"
+          value={draft}
+          placeholder="경로 직접 지정 — 예: input/chess/doc"
+          spellCheck={false}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              setCustom(draft.trim());
+            }
+          }}
+        />
+        {custom ? (
+          <button
+            type="button"
+            className="io-pick-clear"
+            onClick={() => {
+              setCustom("");
+              setDraft("");
+            }}
+          >
+            지정 해제
+          </button>
+        ) : (
+          <button type="button" className="io-pick-go" onClick={() => setCustom(draft.trim())}>
+            열기
+          </button>
+        )}
       </div>
+
+      {!project && !custom ? (
+        <p className="io-blank">프로젝트를 고르거나 위에 경로를 지정하세요</p>
+      ) : (
+        <div className="io-stack">
+          <IoTable
+            kind="input"
+            title="Input"
+            sources={
+              custom ? [{ label: "지정 경로", path: custom }, ...current.input] : current.input
+            }
+            project={project}
+            reloadKey={reloadKey}
+            since={activeRun?.started_at}
+            onOpen={setPreview}
+            onUsePath={onUsePath}
+          />
+          <IoTable
+            kind="output"
+            title="Output"
+            sources={current.output}
+            project={project}
+            reloadKey={reloadKey}
+            since={activeRun?.started_at}
+            onOpen={setPreview}
+            onUsePath={onUsePath}
+          />
+        </div>
       )}
 
       {preview && <FilePreview entry={preview} onClose={() => setPreview(null)} />}
@@ -116,128 +158,187 @@ export default function IoPanel({
   );
 }
 
-function IoGroup({
-  io,
+function IoTable({
+  kind,
+  title,
+  sources,
   project,
   reloadKey,
   since,
   onOpen,
+  onUsePath,
 }: {
-  io: PhaseIo;
+  kind: "input" | "output";
+  title: string;
+  sources: PhaseIo[];
   project: string;
   reloadKey: number;
   /** 이 시각 이후에 바뀐 파일은 이번 실행의 결과로 본다. */
   since?: string;
   onOpen: (entry: FileEntry) => void;
+  onUsePath?: (path: string) => void;
 }) {
-  const base = ioPath(io.path, project);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [listing, setListing] = useState<DirListing | null>(null);
+  // 경로 패턴 -> 지금 들어가 있는 하위 폴더. 합친 표라도 파고든 자리는 경로마다 따로 기억한다.
+  const [cursors, setCursors] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [missing, setMissing] = useState<PhaseIo[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const here = cursor ?? base;
+  const load = useCallback(async () => {
+    const resolved = sources
+      .map((io) => ({ io, base: ioPath(io.path, project) }))
+      .filter((s): s is { io: PhaseIo; base: string } => Boolean(s.base));
 
-  const load = useCallback(() => {
-    if (!here) {
-      setListing(null);
-      return;
+    try {
+      const listings = await Promise.all(
+        resolved.map(async ({ io, base }) => {
+          const here = cursors[io.path] ?? base;
+          return { io, here, listing: await listWorkspace(here) };
+        }),
+      );
+      const next: Row[] = [];
+      const blank: PhaseIo[] = [];
+      for (const { io, here, listing } of listings) {
+        if (!listing.exists || listing.entries.length === 0) blank.push(io);
+        for (const entry of listing.entries) next.push({ io, here, entry });
+      }
+      // 최근에 바뀐 것이 위로 — 방금 나온 산출물을 표 맨 위에서 바로 본다.
+      next.sort((a, b) => (a.entry.modified < b.entry.modified ? 1 : -1));
+      setRows(next);
+      setMissing(blank);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRows([]);
+      setMissing([]);
     }
-    listWorkspace(here)
-      .then((res) => {
-        setListing(res);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [here]);
+  }, [sources, project, cursors]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load, reloadKey]);
 
-  useEffect(() => setCursor(null), [project]);
+  // 프로젝트가 바뀌면 파고든 자리는 의미가 없다.
+  useEffect(() => setCursors({}), [project]);
+
+  const drilled = Object.keys(cursors).length > 0;
 
   return (
-    <div className="iogroup">
-      <div className="iogroup-head">
-        <span className="iogroup-label">{io.label}</span>
-        {cursor && cursor !== base && (
-          <button type="button" className="iogroup-up" onClick={() => setCursor(null)}>
-            ← 위로
+    <div className={`iot iot--${kind}`}>
+      <div className="iot-head">
+        <span className="iot-title">{title}</span>
+        <span className="iot-grow" />
+        {drilled && (
+          <button type="button" className="iot-up" onClick={() => setCursors({})}>
+            ← 처음으로
           </button>
         )}
-        {listing?.entries.length ? (
-          <span className="iogroup-count">{listing.entries.length}개</span>
-        ) : null}
+        <span className="iot-count">{rows ? `${rows.length}개` : "…"}</span>
       </div>
-      <div className="iogroup-path">{here ?? io.path}</div>
 
-      {!base && <p className="iogroup-empty">프로젝트 미지정</p>}
-      {error && <p className="iogroup-error">{error}</p>}
-      {base && !error && listing && !listing.exists && (
-        <p className="iogroup-empty">아직 생성되지 않음</p>
-      )}
-      {base && !error && listing?.exists && listing.entries.length === 0 && (
-        <p className="iogroup-empty">비어 있음</p>
-      )}
+      {error && <p className="iot-error">{error}</p>}
 
-      {listing?.entries.length ? (
-        <table className="iotable">
-          <thead>
-            <tr>
-              <th scope="col">이름</th>
-              <th scope="col">종류</th>
-              <th scope="col">크기</th>
-              <th scope="col">수정</th>
-              <th scope="col" className="iotable-actions">
-                확인
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.entries.map((entry) => {
-              const fresh = Boolean(since && entry.modified > since);
-              return (
-                <tr key={entry.path} className={fresh ? "iorow iorow--fresh" : "iorow"}>
-                  <td className="iotable-name">
-                    <button
-                      type="button"
-                      className={`iolink iolink--${entry.kind}`}
-                      onClick={() => (entry.kind === "dir" ? setCursor(entry.path) : onOpen(entry))}
-                      title={entry.path}
-                    >
-                      {entry.name}
-                    </button>
-                    {fresh && <span className="iofresh">이번 실행</span>}
-                  </td>
-                  <td className="iotable-kind">{KIND_TEXT[entry.kind]}</td>
-                  <td className="iotable-size">{sizeText(entry.size)}</td>
-                  <td className="iotable-time">{timeText(entry.modified)}</td>
-                  <td className="iotable-actions">
-                    {entry.kind === "dir" ? (
-                      <button type="button" className="ioact" onClick={() => setCursor(entry.path)}>
-                        열기
+      {rows && rows.length > 0 && (
+        <div className="iot-scroll">
+          <table className="iotable">
+            <thead>
+              <tr>
+                <th scope="col">이름</th>
+                <th scope="col">위치</th>
+                <th scope="col">크기</th>
+                <th scope="col">수정일</th>
+                <th scope="col" className="iotable-actions">
+                  확인
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ io, here, entry }) => {
+                const fresh = Boolean(since && entry.modified > since);
+                const base = ioPath(io.path, project);
+                // 하위 폴더에 들어가 있으면 '위치'에 그 자리까지 보여 준다.
+                const where =
+                  here === base ? io.label : `${io.label} / ${here.slice((base ?? "").length + 1)}`;
+                return (
+                  <tr key={entry.path} className={fresh ? "iorow iorow--fresh" : "iorow"}>
+                    <td className="iotable-name">
+                      <button
+                        type="button"
+                        className={`iolink iolink--${entry.kind}`}
+                        onClick={() =>
+                          entry.kind === "dir"
+                            ? setCursors((c) => ({ ...c, [io.path]: entry.path }))
+                            : onOpen(entry)
+                        }
+                        title={entry.path}
+                      >
+                        {entry.kind === "dir" ? `${entry.name}/` : entry.name}
                       </button>
-                    ) : (
-                      <>
-                        <button type="button" className="ioact" onClick={() => onOpen(entry)}>
-                          보기
-                        </button>
-                        <a
+                      {fresh && <span className="iofresh">이번 실행</span>}
+                    </td>
+                    <td className="iotable-where" title={here}>
+                      {where}
+                    </td>
+                    <td className="iotable-size">{sizeText(entry.size)}</td>
+                    <td className="iotable-time">{timeText(entry.modified)}</td>
+                    <td className="iotable-actions">
+                      {entry.kind === "dir" ? (
+                        <button
+                          type="button"
                           className="ioact"
-                          href={workspaceRawUrl(entry.path)}
-                          download={entry.name}
+                          onClick={() => setCursors((c) => ({ ...c, [io.path]: entry.path }))}
                         >
-                          내려받기
-                        </a>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : null}
+                          열기
+                        </button>
+                      ) : (
+                        <>
+                          {onUsePath && (
+                            <button
+                              type="button"
+                              className="ioact ioact--use"
+                              title="이 경로를 지시문에 넣는다"
+                              onClick={() => onUsePath(entry.path)}
+                            >
+                              지시문에
+                            </button>
+                          )}
+                          <button type="button" className="ioact" onClick={() => onOpen(entry)}>
+                            보기
+                          </button>
+                          <a
+                            className="ioact"
+                            href={workspaceRawUrl(entry.path)}
+                            download={entry.name}
+                          >
+                            내려받기
+                          </a>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rows && rows.length === 0 && !error && (
+        <p className="iot-empty">
+          없음
+        </p>
+      )}
+
+      {/* 빈 경로도 어디가 비었는지는 알려 준다 — "안 나왔다"와 "경로가 없다"는 다른 말이다. */}
+      {missing.length > 0 && (
+        <p className="iot-paths">
+          {missing.map((io) => (
+            <span key={io.path} className="iot-path">
+              {ioPath(io.path, project)}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

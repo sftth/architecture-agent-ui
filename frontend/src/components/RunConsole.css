@@ -1,26 +1,14 @@
 .console-panel {
   display: flex;
   flex-direction: column;
-  /* 부모(.app-sidecolumn)가 정해준 높이 안에서 남는 만큼만 차지한다.
+  /* 부모(.app-side)가 정해준 높이 안에서 남는 만큼만 차지한다.
      min-height:0이 없으면 flex 자식이 내용 높이 밑으로 못 줄어들어 스크롤이 생기지 않는다. */
   flex: 1;
   min-height: 0;
-  background: var(--ink-900);
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 
-.console-panel--empty {
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-  color: var(--paper-500);
-  font-size: var(--text-md);
-  text-align: center;
-}
-
+/* 얇은 이름표 한 줄. 배경을 따로 깔지 않아 아래 로그와 같은 면 위에 있는 것으로 읽힌다. */
 .console-header {
   flex-shrink: 0;
   display: flex;
@@ -28,10 +16,11 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--line-cyan-dim);
-  background: var(--ink-850);
 }
 
 .console-header-main {
+  /* 상태 글자가 없는 빈 상태에서도 오른쪽 손잡이가 끝에 서도록 남는 폭을 여기서 먹는다. */
+  flex: 1;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -86,20 +75,40 @@
   color: var(--line-cyan);
 }
 
-.console-stop {
-  margin-left: auto;
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--gate-rose);
-  color: var(--gate-rose);
+/* 머리 오른쪽의 세션 손잡이 — 이력 열기 / 새 세션. */
+.console-icon {
+  flex: none;
+  display: inline-flex;
+  padding: 5px;
+  background: none;
+  border: none;
   border-radius: var(--radius-sm);
-  padding: 5px 12px;
-  font-size: var(--text-sm);
+  color: var(--paper-500);
   cursor: pointer;
 }
 
-.console-stop:hover {
-  background: var(--gate-rose-dim);
+.console-icon:hover {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+/* 아직 아무 것도 안 보낸 칸. 로그 대신 무엇을 하면 되는지만 적는다. */
+.console-body--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  text-align: center;
+}
+
+/* 빈 상태는 표제가 아니라 눈금이다 — 조용히 상태만 알린다. */
+.console-hello {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: var(--text-sm);
+  color: var(--paper-500);
 }
 
 .console-final {
@@ -110,6 +119,7 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
 }
+.console-final--running { color: var(--signal-amber); }
 .console-final--success { color: var(--gate-mint); }
 .console-final--error { color: var(--gate-rose); }
 .console-final--stopped { color: var(--paper-500); }
@@ -119,10 +129,11 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* 로그는 계기반에 파여 들어간 화면처럼 한 단 낮게 둔다. */
-  background: var(--surface-recess);
-  box-shadow: var(--shadow-inset);
-  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+  /* 아래쪽 여백은 떠 있는 입력판이 가리는 높이다(--composer-h는 입력판이 자기 높이를
+     재서 넣는다). 이만큼 비워 두어야 마지막 줄이 입력판 뒤에 영영 숨지 않고,
+     스크롤하면 글이 그 밑으로 지나간다. */
+  padding: var(--space-3) var(--space-4)
+    calc(var(--composer-h, 180px) + var(--space-4) * 2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
@@ -133,32 +144,24 @@
    줄이 쌓이면 눈금이 이어져, 스크롤하지 않고도 이 run이 무엇을 하며 흘러갔는지
    — 도구를 계속 두드렸는지, 훅에서 걸렸는지, 어디서 붉어졌는지 — 한눈에 읽힌다.
    장식이 아니라 로그가 이미 가진 정보를 그대로 세워 둔 것이다. */
+/* system·stderr 같은 곁가지. 본문(에이전트의 말·도구 상자)보다 한 단 물러나 있는다. */
 .console-line {
   display: flex;
   gap: var(--space-2);
-  padding: 2px 0 2px var(--space-4);
-  border-left: 3px solid transparent;
+  margin-bottom: var(--space-2);
+  padding: 2px 0 2px var(--space-3);
+  border-left: 2px solid transparent;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.console-line-time {
-  flex-shrink: 0;
-  color: var(--paper-500);
-  opacity: 0.7;
-}
-
-.console-line-icon {
-  flex-shrink: 0;
-  width: 1.2em;
-  text-align: center;
-}
-
 .console-line-label {
   flex-shrink: 0;
-  width: 6.5em;
+  /* RESULT(6자)가 한 줄에 들어가는 폭. 넘치면 이름표가 두 줄이 되어 로그 줄이 어긋난다. */
+  width: 5.6em;
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
+  white-space: nowrap;
   opacity: 0.75;
   padding-top: 1px;
 }
@@ -171,18 +174,13 @@
 .line--system .console-line-text { color: var(--paper-500); }
 .line--assistant { color: var(--paper-100); }
 .line--thinking { font-style: italic; opacity: 0.7; }
-.line--tool .console-line-icon,
 .line--tool .console-line-label { color: var(--signal-amber); }
-.line--tool-result .console-line-icon,
 .line--tool-result .console-line-label { color: var(--paper-500); }
 .line--tool-result .console-line-text { color: var(--paper-300); }
-.line--hook .console-line-icon,
 .line--hook .console-line-label { color: var(--line-cyan); }
 .line--result { color: var(--gate-mint); }
-.line--result .console-line-icon,
 .line--result .console-line-label { color: var(--gate-mint); }
 .line--stderr { color: var(--gate-rose); }
-.line--stderr .console-line-icon,
 .line--stderr .console-line-label { color: var(--gate-rose); }
 .line--raw { opacity: 0.55; }
 
@@ -204,4 +202,18 @@
   border-top: 1px solid var(--line-cyan-dim);
   margin-top: 6px;
   padding-top: 8px;
+}
+
+/* 에이전트가 쓴 글 한 덩어리. 도구 상자와 리듬을 맞춰 아래 여백만 준다. */
+.say {
+  margin-bottom: var(--space-3);
+}
+
+/* 사고 과정은 결과가 아니라 과정이라 한 단 죽여 둔다. */
+.say--dim .md {
+  color: var(--paper-500);
+}
+
+.say--dim .md code {
+  color: var(--paper-500);
 }

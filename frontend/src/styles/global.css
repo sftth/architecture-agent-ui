@@ -17,8 +17,9 @@ body {
   font-family: var(--font-body);
   font-size: var(--text-md);
   line-height: var(--leading-body);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  /* 한글은 어절 중간에서 끊으면 읽기 나쁘다. 끊을 데가 없을 때만 아무 데서나 끊는다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* 스크롤 되는 칸은 모두 어두운 톤의 얇은 막대를 쓴다. */

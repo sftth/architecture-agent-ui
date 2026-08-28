@@ -3,7 +3,6 @@ import { PHASES, PhaseId } from "../phases";
 import { ProjectDef, RunSummary, RunStatus } from "../types";
 import Menu, { MenuItem } from "./Menu";
 import Chip from "./Chip";
-import RunHistory from "./RunHistory";
 import "./PhaseRail.css";
 
 function latestStatus(runs: RunSummary[], stageKeys: string[]): RunStatus | "idle" {
@@ -17,14 +16,15 @@ function latestStatus(runs: RunSummary[], stageKeys: string[]): RunStatus | "idl
 /**
  * 좌측 단계 메뉴. 분석 -> 설계 -> 구현은 실제 실행 순서라 번호를 붙였고,
  * 각 단계의 램프는 그 단계 stage에서 가장 최근에 돈 run의 상태를 그대로 비춘다.
- * 아래쪽 실행 기록도 화면 이동 수단이라 같은 레일에 둔다.
+ *
+ * 실행 기록은 여기 있다가 오른쪽 세션 서랍으로 옮겼다. 이 레일은 "어디를 볼 것인가"를
+ * 고르는 자리이고 이력은 "무엇을 봤었나"를 되짚는 자리라 성격이 다른데, 늘 펼쳐진 채
+ * 자리를 차지해 정작 자주 쓰는 단계 목록을 아래로 밀어냈다.
  */
 export default function PhaseRail({
   runs,
   activePhase,
   onSelectPhase,
-  activeRunId,
-  onSelectRun,
   project,
   projects,
   onSelectProject,
@@ -33,8 +33,6 @@ export default function PhaseRail({
   runs: RunSummary[];
   activePhase: PhaseId;
   onSelectPhase: (phase: PhaseId) => void;
-  activeRunId: string | null;
-  onSelectRun: (id: string) => void;
   project: string;
   projects: ProjectDef[];
   onSelectProject: (project: string) => void;
@@ -95,23 +93,60 @@ export default function PhaseRail({
                 type="button"
                 className={`rail-item rail-item--${status}${active ? " rail-item--on" : ""}`}
                 aria-current={active ? "page" : undefined}
+                title={phase.caption}
                 onClick={() => onSelectPhase(phase.id)}
               >
-                <span className="rail-num">{phase.num}</span>
-                <span className="rail-text">
-                  <span className="rail-name">{phase.title}</span>
-                  <span className="rail-caption">{phase.caption}</span>
-                </span>
+                <PhaseIcon id={phase.id} />
+                <span className="rail-name">{phase.title}</span>
                 <span className={`rail-lamp rail-lamp--${status}`} aria-hidden="true" />
               </button>
             </li>
           );
         })}
       </ul>
-
-      <div className="rail-history">
-        <RunHistory runs={runs} activeRunId={activeRunId} onSelect={onSelectRun} />
-      </div>
     </nav>
+  );
+}
+
+/**
+ * 단계 아이콘. 번호(01/02/03) 대신 그림을 세운다 — 번호는 순서만 말하고 무엇인지는
+ * 말하지 않아, 결국 옆의 글자를 읽어야 했다. 획 기반 16px, 세 개가 같은 문법이다.
+ */
+function PhaseIcon({ id }: { id: PhaseId }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  return (
+    <svg className="rail-icon" viewBox="0 0 20 20" width="17" height="17" aria-hidden="true">
+      {id === "analyze" && (
+        /* 문서 + 돋보기 — 받은 문서를 읽어 요건을 뽑아내는 단계 */
+        <>
+          <path d="M4 3.2h6.4L15 7.6v3.2" {...common} />
+          <path d="M10.2 3.4v4h4" {...common} />
+          <path d="M4 3.2v13.6h4.2" {...common} />
+          <circle cx="13" cy="13.4" r="2.9" {...common} />
+          <path d="M15.2 15.6 17.2 17.6" {...common} />
+        </>
+      )}
+      {id === "design" && (
+        /* 도면 — 칸이 나뉜 판. 설계서를 그리는 단계 */
+        <>
+          <rect x="3" y="3.6" width="14" height="12.8" rx="1.6" {...common} />
+          <path d="M3 8.2h14M8.6 8.2v8.2" {...common} />
+        </>
+      )}
+      {id === "implement" && (
+        /* 쌓인 장비 — 실제 서버에 설치하고 검증하는 단계 */
+        <>
+          <rect x="3" y="3.4" width="14" height="4.6" rx="1.4" {...common} />
+          <rect x="3" y="12" width="14" height="4.6" rx="1.4" {...common} />
+          <path d="M6 5.7h.01M6 14.3h.01" {...common} strokeWidth={2} />
+        </>
+      )}
+    </svg>
   );
 }

@@ -1,0 +1,267 @@
+/* 오른쪽 칸 위에 겹쳐 밀려 나오는 이력 서랍.
+   화면을 새로 열지 않고 지금 보던 로그 위를 덮었다가 물러난다 — 이력을 고르는 일은
+   짧고, 고르고 나면 곧바로 아래 로그를 봐야 하기 때문에. */
+.drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(380px, 100%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--ink-900);
+  border-left: 1px solid var(--line-cyan-dim);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
+  animation: drawer-in 0.18s ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.drawer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drawer-title {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.drawer-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.drawer-close {
+  margin-left: auto;
+  display: inline-flex;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--paper-500);
+  cursor: pointer;
+}
+
+.drawer-close:hover {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+.drawer-search {
+  flex: none;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--surface-recess);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-sm);
+  color: var(--paper-100);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.drawer-search:focus {
+  outline: none;
+  border-color: var(--line-cyan);
+}
+
+.drawer-search::placeholder {
+  color: var(--paper-500);
+}
+
+.drawer-empty {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-label);
+  font-size: var(--text-sm);
+  color: var(--paper-500);
+}
+
+.drawer-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.drawer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+
+.drawer-row:hover {
+  background: var(--ink-850);
+}
+
+.drawer-row--on {
+  background: var(--ink-800);
+  border-left-color: var(--line-cyan);
+}
+
+.drawer-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.drawer-row:hover .drawer-pick,
+.drawer-row--on .drawer-pick {
+  color: var(--paper-100);
+}
+
+.drawer-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-cyan-dim);
+}
+
+.drawer-dot--running {
+  background: var(--signal-amber);
+  animation: drawer-blink 1.3s ease-in-out infinite;
+}
+.drawer-dot--success { background: var(--gate-mint); }
+.drawer-dot--error { background: var(--gate-rose); }
+.drawer-dot--stopped { background: var(--paper-500); }
+
+@keyframes drawer-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.drawer-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 시각과 손잡이는 같은 자리를 나눠 쓴다 — 손이 올라오면 바뀐다. */
+.drawer-ago {
+  flex: none;
+  padding-right: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  white-space: nowrap;
+}
+
+.drawer-acts {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.drawer-row:hover .drawer-ago,
+.drawer-row:focus-within .drawer-ago {
+  display: none;
+}
+
+.drawer-row:hover .drawer-acts,
+.drawer-row:focus-within .drawer-acts {
+  display: flex;
+}
+
+.drawer-icon {
+  display: inline-flex;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--paper-500);
+  cursor: pointer;
+}
+
+.drawer-icon:hover {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+.drawer-icon--danger:hover {
+  background: var(--gate-rose-dim);
+  color: var(--gate-rose);
+}
+
+.drawer-act {
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--paper-300);
+  font-family: var(--font-label);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.drawer-act:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.drawer-act--danger {
+  border-color: var(--gate-rose);
+  color: var(--gate-rose);
+}
+
+.drawer-act--danger:hover {
+  background: var(--gate-rose-dim);
+  border-color: var(--gate-rose);
+  color: var(--gate-rose);
+}
+
+.drawer-rename {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface-recess);
+  border: 1px solid var(--line-cyan);
+  border-radius: var(--radius-sm);
+  color: var(--paper-100);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.drawer-rename:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer {
+    animation: none;
+  }
+}

@@ -11,7 +11,6 @@ export interface AgentDef {
   key: string;
   label: string;
   role: string;
-  mutating: boolean;
   tools: string[];
 }
 
@@ -44,6 +43,8 @@ export type RunStatus = "running" | "success" | "error" | "stopped";
 
 export interface RunSummary {
   id: string;
+  /** 세션 목록에 뜨는 이름. 처음에는 지시문 첫 줄, 사용자가 바꿀 수 있다. */
+  title: string;
   agent_key: string;
   agent_label: string;
   stage_key: string;

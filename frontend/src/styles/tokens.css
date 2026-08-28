@@ -40,33 +40,47 @@
   --gate-rose: #e1667c; /* 실패 */
   --gate-rose-dim: #6a3540;
 
+  /* 하네스 3역할의 고유색. 상태 3색(amber/mint/rose)과 겹치지 않게, 역할은 "무엇인가"를
+     띠고 상태는 "지금 어떤가"를 띤다 — plan 초록 / impl 청록 / eval 보라. */
+  --role-plan: #6fd08c;
+  --role-plan-dim: #2c5c3c;
+  --role-impl: #5ba7c4;
+  --role-impl-dim: #234c5e;
+  --role-eval: #9b8cf0;
+  --role-eval-dim: #3d3570;
+
   /* 계기 표면: 위쪽 1px 하이라이트 + 바깥 그림자로 "깎아 놓은 판" 느낌을 만든다.
      바탕에 무늬를 깔지 않는 대신 깊이는 전부 여기서 나온다. */
   --edge-hilite: rgba(231, 239, 243, 0.05);
   --shadow-panel: 0 1px 0 var(--edge-hilite) inset, 0 10px 28px rgba(0, 0, 0, 0.4);
   --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 
-  /* Type — 한글은 Plex Sans KR, 라틴은 각 역할의 앞 서체가 그린다(글자마다 첫 매칭 우선).
-     mono 스택에도 KR을 넣어 둔다: 프로젝트 이름처럼 식별자 자리에 한글이 들어와도
-     시스템 CJK 폰트로 떨어지지 않고 같은 얼굴로 그려진다. */
-  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans KR", "IBM Plex Sans", sans-serif;
-  --font-body: "IBM Plex Sans", "IBM Plex Sans KR", -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, "SFMono-Regular", monospace;
+  /* Type — 시스템 서체를 쓴다. 웹폰트(IBM Plex)를 쓰던 때는 10~11px 마이크로 라벨과
+     굵은 mono 대문자가 윈도우에서 힌팅을 못 받아 가장자리가 번졌다. Segoe UI와 Consolas는
+     이 화면이 도는 바로 그 OS가 그 크기에 맞춰 힌팅해 둔 서체라, 같은 자리에서 또렷하다.
+     (cowork-agent도 같은 이유로 시스템 서체만 쓴다.)
+     한글은 Malgun Gothic이 받는다 — mono 스택에도 넣어, 프로젝트 이름처럼 식별자 자리에
+     한글이 들어와도 낯선 CJK 폰트로 떨어지지 않는다. */
+  --font-body: "Segoe UI", "Malgun Gothic", system-ui, -apple-system, sans-serif;
+  --font-label: var(--font-body);
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Malgun Gothic", monospace;
 
-  /* 크기는 이 일곱 단만 쓴다. 12.5 / 11.5 / 10.5 를 섞어 쓰면 눈이 정렬을 못 읽는다. */
-  --text-2xs: 10.5px;
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-md: 13.5px;
-  --text-lg: 15px;
-  --text-xl: 17px;
-  --text-2xl: 24px;
+  /* 크기는 이 일곱 단만 쓴다. 바닥을 10.5 -> 11.5로 올렸다 — 그 아래는 어떤 서체를 써도
+     한글 낱자가 뭉개져, 작게 만든 만큼 읽히지 않는다. */
+  --text-2xs: 11.5px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
 
-  --leading-tight: 1.35;
+  --leading-tight: 1.4;
   --leading-body: 1.6;
 
-  /* 자간은 라틴 대문자 마이크로 라벨에만 준다. 한글에 자간을 벌리면 낱자가 흩어진다. */
-  --tracking-label: 0.14em;
+  /* 자간은 라틴 대문자 마이크로 라벨에만, 그것도 아주 조금. 0.14em까지 벌렸을 때
+     HARNESS 같은 짧은 라벨이 낱자로 흩어져 보였다. */
+  --tracking-label: 0.04em;
 
   /* Scale */
   --radius-sm: 3px;
@@ -94,6 +108,13 @@
     --paper-500: #5e7787;
     --line-cyan: #2f6a86;
     --line-cyan-dim: #c7d8e0;
+    /* 흰 판 위에서는 같은 색상환을 유지하되 명도를 낮춰 대비를 확보한다. */
+    --role-plan: #2f7d4a;
+    --role-plan-dim: #b9dcc6;
+    --role-impl: #2f6a86;
+    --role-impl-dim: #c0d8e3;
+    --role-eval: #5a49b8;
+    --role-eval-dim: #cdc6ee;
     /* 흰 판 위에 흰 하이라이트는 보이지 않으므로 밝은 테마의 깊이는 그림자로만 만든다. */
     --edge-hilite: transparent;
     --shadow-panel: 0 1px 2px rgba(18, 33, 43, 0.06), 0 6px 18px rgba(18, 33, 43, 0.08);
@@ -113,6 +134,12 @@
   --paper-500: #5e7787;
   --line-cyan: #2f6a86;
   --line-cyan-dim: #c7d8e0;
+  --role-plan: #2f7d4a;
+  --role-plan-dim: #b9dcc6;
+  --role-impl: #2f6a86;
+  --role-impl-dim: #c0d8e3;
+  --role-eval: #5a49b8;
+  --role-eval-dim: #cdc6ee;
   --edge-hilite: transparent;
   --shadow-panel: 0 1px 2px rgba(18, 33, 43, 0.06), 0 6px 18px rgba(18, 33, 43, 0.08);
   --shadow-inset: inset 0 1px 3px rgba(18, 33, 43, 0.14);
@@ -130,6 +157,12 @@
   --paper-500: #7a919e;
   --line-cyan: #4a8fa8;
   --line-cyan-dim: #1f3746;
+  --role-plan: #6fd08c;
+  --role-plan-dim: #2c5c3c;
+  --role-impl: #5ba7c4;
+  --role-impl-dim: #234c5e;
+  --role-eval: #9b8cf0;
+  --role-eval-dim: #3d3570;
   --edge-hilite: rgba(231, 239, 243, 0.05);
   --shadow-panel: 0 1px 0 var(--edge-hilite) inset, 0 10px 28px rgba(0, 0, 0, 0.4);
   --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);

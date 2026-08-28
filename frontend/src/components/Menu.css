@@ -107,15 +107,6 @@
   text-overflow: ellipsis;
 }
 
-/* 실제로 서버를 바꿀 수 있는 항목. 스테이지 카드의 위험 표시와 같은 뜻이다. */
-.menu-row-flag {
-  flex-shrink: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--signal-amber);
-}
-
 .menu-row-hint {
   color: var(--paper-500);
   font-size: var(--text-xs);
@@ -177,21 +168,14 @@
   color: var(--line-cyan);
 }
 
-.chip-flag {
-  flex-shrink: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--signal-amber);
-}
-
 .chip-caret {
   flex-shrink: 0;
   opacity: 0.7;
 }
 
 .chip--empty .chip-key {
-  font-style: italic;
+  font-family: var(--font-body);
+  color: var(--paper-500);
 }
 
 .chip-count {
@@ -200,6 +184,24 @@
   border-radius: 999px;
   background: var(--line-cyan-dim);
   color: var(--paper-300);
+  font-size: var(--text-2xs);
+  font-style: normal;
+}
+
+.chip-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  opacity: 0.8;
+}
+
+/* 값에 딸린 부속 값(effort). 개수 칩과 달리 채도를 줘서, 값이 걸려 있다는 것이
+   칩을 열어 보지 않아도 읽히게 한다. */
+.chip-badge {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(74, 143, 168, 0.18);
+  color: var(--line-cyan);
   font-size: var(--text-2xs);
   font-style: normal;
 }

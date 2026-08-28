@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PhaseRail from "./components/PhaseRail";
 import HarnessStrip from "./components/HarnessStrip";
-import StageCard from "./components/StageCard";
 import IoPanel from "./components/IoPanel";
 import RunConsole from "./components/RunConsole";
 import Composer from "./components/Composer";
@@ -9,9 +8,11 @@ import ProjectManager from "./components/ProjectManager";
 import ProjectGate from "./components/ProjectGate";
 import AuthScreen from "./components/AuthScreen";
 import SettingsScreen from "./components/SettingsScreen";
+import SessionDrawer from "./components/SessionDrawer";
 import {
   AUTH_EXPIRED_EVENT,
   createRun,
+  deleteRun,
   fetchMe,
   getCatalog,
   getModels,
@@ -20,6 +21,7 @@ import {
   listRuns,
   logout,
   openRunSocket,
+  renameRun,
   stopRun,
 } from "./api/client";
 import {
@@ -31,7 +33,8 @@ import {
   StageDef,
   UserProfile,
 } from "./types";
-import { PhaseId, phaseIdForStage, stagesForPhase } from "./phases";
+import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
+import { activeSubAgent, planOf } from "./harness";
 import "./App.css";
 
 export default function App() {
@@ -56,6 +59,7 @@ export default function App() {
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const closeSocketRef = useRef<() => void>();
 
   const resetSession = useCallback(() => {
@@ -76,6 +80,7 @@ export default function App() {
     setRunsById({});
     setEventsByRun({});
     setActiveRunId(null);
+    setSessionsOpen(false);
   }, []);
 
   useEffect(() => {
@@ -177,16 +182,55 @@ export default function App() {
   function handleSelectAgent(key: string) {
     setAgentKey(key);
     const stage = stages.find((s) => s.agents.some((a) => a.key === key));
-    if (stage) setPhase(phaseIdForStage(stage.key));
+    // 공통 유틸리티는 소속이 없다(null) — 보던 단계를 그대로 두고 대상만 바꾼다.
+    const next = stage && phaseIdForStage(stage.key);
+    if (next) setPhase(next);
   }
 
   function handleSelectHistory(id: string) {
     setActiveRunId(id);
-    // 히스토리에서 고른 run이 지금 보고 있지 않은 단계 소속이면 그 단계로 함께 전환한다.
+    setSessionsOpen(false);
+    // 이력에서 고른 run이 지금 보고 있지 않은 단계 소속이면 그 단계로 함께 전환한다.
     const stageKey = runsById[id]?.stage_key;
-    if (stageKey) setPhase(phaseIdForStage(stageKey));
+    const next = stageKey && phaseIdForStage(stageKey);
+    if (next) setPhase(next);
     if (!eventsByRun[id] || runsById[id]?.status === "running") {
       connect(id);
+    }
+  }
+
+  /** 새 세션 = 빈 컨텍스트. 실제 세션은 지시문을 보내는 순간 서버에서 생긴다. */
+  function handleNewSession() {
+    closeSocketRef.current?.();
+    closeSocketRef.current = undefined;
+    setActiveRunId(null);
+    setPrompt("");
+    setSessionsOpen(false);
+  }
+
+  async function handleRenameSession(id: string, title: string) {
+    // 서버가 빈 이름을 원래 이름으로 되돌리므로, 결과를 그대로 받아 반영한다.
+    const updated = await renameRun(id, title);
+    setRunsById((prev) => ({ ...prev, [id]: updated }));
+  }
+
+  async function handleDeleteSession(id: string) {
+    await deleteRun(id);
+    setRunsById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setEventsByRun((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    // 보고 있던 세션을 지웠으면 빈 컨텍스트로 돌아간다 — 없는 run의 로그를 계속 붙들지 않게.
+    if (activeRunId === id) {
+      closeSocketRef.current?.();
+      closeSocketRef.current = undefined;
+      setActiveRunId(null);
     }
   }
 
@@ -208,11 +252,9 @@ export default function App() {
   const runs = useMemo(() => Object.values(runsById), [runsById]);
   const activeRun = activeRunId ? runsById[activeRunId] : undefined;
   const activeEvents = activeRunId ? eventsByRun[activeRunId] ?? [] : [];
-  // §번호는 카탈로그 전체 기준으로 매겨, 단계를 전환해도 같은 stage가 같은 번호를 유지한다.
-  const visibleStages = useMemo(
-    () => stagesForPhase(stages, phase).map((stage) => ({ stage, index: stages.indexOf(stage) })),
-    [stages, phase],
-  );
+  const visibleStages = useMemo(() => stagesForPhase(stages, phase), [stages, phase]);
+  // 어느 단계에서 보든 함께 딸려 오는 공통 유틸리티.
+  const common = useMemo(() => commonStage(stages), [stages]);
 
   const agentStage: StageDef | undefined = useMemo(
     () => stages.find((stage) => stage.agents.some((a) => a.key === agentKey)),
@@ -220,19 +262,29 @@ export default function App() {
   );
   const agent: AgentDef | undefined = agentStage?.agents.find((a) => a.key === agentKey);
 
-  // 단계를 옮기면 그 단계의 첫 sub-agent를 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
+  // 단계를 옮기면 그 단계 첫 스테이지의 plan을 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
   // 카탈로그가 아직 없거나 이 단계에 sub-agent가 없으면 비워 둔다(칩에 "대상 없음"으로 보인다).
   useEffect(() => {
-    if (agentKey && agentStage && phaseIdForStage(agentStage.key) === phase) return;
-    const first = visibleStages[0]?.stage.agents[0]?.key;
+    // 이 단계 것을 골랐거나, 어느 단계에서나 쓰는 공통 유틸리티를 골랐으면 그대로 둔다.
+    const held =
+      agentStage &&
+      (agentStage.key === COMMON_STAGE || phaseIdForStage(agentStage.key) === phase);
+    if (agentKey && held) return;
+    const head = visibleStages[0];
+    const first = head && (planOf(head) ?? head.agents[0])?.key;
     if (first) setAgentKey(first);
   }, [phase, agentKey, agentStage, visibleStages]);
 
-  function latestRunForStage(stageKey: string): RunSummary | undefined {
-    const candidates = runs.filter((r) => r.stage_key === stageKey);
-    if (candidates.length === 0) return undefined;
-    return candidates.sort((a, b) => (a.started_at < b.started_at ? 1 : -1))[0];
-  }
+  // plan 하나가 도는 동안 impl·eval은 같은 프로세스 안에서 불려 나가 run 기록이 남지
+  // 않는다. 지금 누가 일하고 있는지는 로그에서 읽어내 하네스에 넘긴다.
+  const allAgentKeys = useMemo(
+    () => stages.flatMap((stage) => stage.agents.map((a) => a.key)),
+    [stages],
+  );
+  const activeAgent = useMemo(
+    () => (activeRun?.status === "running" ? activeSubAgent(activeEvents, allAgentKeys) : null),
+    [activeRun?.status, activeEvents, allAgentKeys],
+  );
 
   if (user === undefined) {
     return <div className="app-loading">불러오는 중...</div>;
@@ -256,9 +308,9 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {/* 제목은 한 줄이면 된다. 큰 표제는 매번 같은 말을 하면서 화면 위쪽을 먹었다. */}
       <header className="app-header">
-        <div className="app-header-eyebrow">ARCHITECTURE-AGENT · CONTROL CONSOLE</div>
-        <h1 className="app-header-title">인프라 자동화 파이프라인 관제</h1>
+        <div className="app-header-mark">ARCHITECTURE&#8209;AGENT</div>
         <div className="app-header-actions">
           <button
             className="app-path-badge app-path-badge--ok"
@@ -282,8 +334,6 @@ export default function App() {
           runs={runs}
           activePhase={phase}
           onSelectPhase={setPhase}
-          activeRunId={activeRunId}
-          onSelectRun={handleSelectHistory}
           project={project}
           projects={projects}
           onSelectProject={setProject}
@@ -292,44 +342,47 @@ export default function App() {
 
         <main className="app-column">
           <HarnessStrip
-            stages={visibleStages.map(({ stage }) => stage)}
+            stages={visibleStages}
+            /* 카탈로그가 아직 안 온 상태를 "이 단계엔 없음"으로 오해시키지 않는다. */
+            loaded={stages.length > 0}
+            activeAgent={activeAgent}
+            common={common}
             runs={runs}
             selectedAgent={agentKey}
             onSelectAgent={setAgentKey}
           />
 
-          {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 카드 목록이 긴 단계에서도
-              바로 눈에 들도록 절차 띠 바로 아래에 둔다. */}
-          <IoPanel phase={phase} project={project} activeRun={activeRun} />
-
-          {visibleStages.map(({ stage, index }) => (
-            <StageCard
-              key={stage.key}
-              stage={stage}
-              index={index}
-              selectedAgent={agentKey}
-              onSelectAgent={setAgentKey}
-              runningRun={latestRunForStage(stage.key)}
-            />
-          ))}
-          {/* 카탈로그가 아직 안 왔거나 실패한 상태(stages 비어 있음)를 "이 단계엔 없음"으로
-              오해시키지 않도록, 카탈로그가 실제로 로드된 뒤에만 빈 단계를 알린다. */}
-          {stages.length > 0 && visibleStages.length === 0 && (
-            <p className="app-stage-empty">이 단계에 해당하는 sub-agent가 없습니다.</p>
-          )}
+          {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를
+              말하면 이 표가 "그래서 뭐가 남았나"로 답한다 — 그래서 바로 아래에 붙인다. */}
+          <IoPanel
+            phase={phase}
+            project={project}
+            activeRun={activeRun}
+            /* 화면에서 고른 파일이 곧 이번 작업의 입력이 되도록 지시문에 경로를 넣어 준다. */
+            onUsePath={(path) =>
+              setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()}
+${path}` : path))
+            }
+          />
 
         </main>
 
         <aside className="app-side">
-          <RunConsole run={activeRun} events={activeEvents} onStop={handleStop} />
+          <RunConsole
+            run={activeRun}
+            events={activeEvents}
+            onOpenSessions={() => setSessionsOpen(true)}
+            onNewSession={handleNewSession}
+          />
           <Composer
             value={prompt}
             onChange={setPrompt}
             onRun={handleRun}
+            onStop={handleStop}
             running={activeRun?.status === "running"}
-            stages={stages}
+            stages={visibleStages}
+            common={common}
             agent={agent}
-            agentStage={agentStage}
             onSelectAgent={handleSelectAgent}
             project={project}
             models={models}
@@ -340,6 +393,17 @@ export default function App() {
               setEffort(nextEffort);
             }}
           />
+
+          {sessionsOpen && (
+            <SessionDrawer
+              runs={runs}
+              activeRunId={activeRunId}
+              onSelect={handleSelectHistory}
+              onRename={(id, title) => void handleRenameSession(id, title)}
+              onDelete={(id) => void handleDeleteSession(id)}
+              onClose={() => setSessionsOpen(false)}
+            />
+          )}
         </aside>
       </div>
 

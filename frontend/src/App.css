@@ -12,7 +12,7 @@
   display: flex;
 }
 
-/* 가운데 — 지금 단계의 절차 띠와 스테이지 카드 */
+/* 가운데 — 지금 단계의 하네스와 입력·산출물 표 */
 .app-column {
   flex: 1;
   min-width: 0;
@@ -24,44 +24,37 @@
   padding: var(--space-5);
 }
 
-/* 오른쪽 — 로그는 남는 높이를 다 쓰고, 입력판은 아래에 붙박이로 남는다 */
+/* 오른쪽 — 로그가 이 칸을 통째로 쓰고, 입력판은 그 위에 떠 있다.
+   전에는 로그를 테두리 친 상자에 담았는데, 상자 안에 또 상자를 두니 정작 읽어야 할
+   로그의 폭이 두 겹의 여백만큼 줄었다. 여기서는 면이 곧 로그다.
+   세션 서랍도 이 칸 위에 겹쳐 나오므로 여기가 그 기준면이다. */
 .app-side {
+  position: relative;
   flex: none;
   width: 460px;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--space-5) var(--space-5) var(--space-4);
   border-left: 1px solid var(--line-cyan-dim);
+  overflow: hidden;
 }
 
-/* 장비 상단의 이름표. 아래 실선이 계기반의 시작선을 긋는다. */
+/* 장비 상단의 이름표 한 줄. 아래 실선이 계기반의 시작선을 긋는다. */
 .app-header {
   flex: none;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--line-cyan-dim);
 }
 
-.app-header-eyebrow {
-  width: 100%;
-  margin-bottom: -2px;
+.app-header-mark {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   color: var(--line-cyan);
-}
-
-.app-header-title {
-  margin: 3px 0 0;
-  /* 한글 제목이라 라틴 콘덴스드는 걸리지 않는다. 성격은 굵기와 자간으로 낸다. */
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: var(--text-2xl);
-  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .app-loading {
@@ -145,17 +138,6 @@
 
 .app-path-badge--ok .app-path-dot { background: var(--gate-mint); }
 .app-path-badge--ok { color: var(--gate-mint); border-color: var(--gate-mint-dim); }
-
-.app-stage-empty {
-  margin: 0;
-  padding: var(--space-5);
-  border: 1px dashed var(--line-cyan-dim);
-  border-radius: var(--radius-md);
-  font-family: var(--font-label);
-  font-size: var(--text-sm);
-  color: var(--paper-500);
-  text-align: center;
-}
 
 /* 좁은 화면에서는 세로로 쌓되, 입력판은 여전히 로그 바로 아래에 붙어 있게 둔다. */
 @media (max-width: 1100px) {

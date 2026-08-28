@@ -112,7 +112,7 @@
 
 .mm-effort-label em {
   margin-left: 4px;
-  color: var(--signal-amber);
+  color: var(--line-cyan);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-style: normal;
@@ -156,7 +156,10 @@
   background: var(--paper-500);
 }
 
+/* 지금 걸린 effort. 입력판 칩의 effort 배지와 같은 색을 쓴다 —
+   같은 값이 두 자리에 보이는데 색이 다르면 다른 값으로 읽힌다.
+   amber는 이 계기반에서 "지금 도는 중"이라, 설정값에는 쓰지 않는다. */
 .mm-dot--on {
-  background: var(--signal-amber);
-  box-shadow: 0 0 0 3px rgba(242, 166, 90, 0.22);
+  background: var(--line-cyan);
+  box-shadow: 0 0 0 3px rgba(74, 143, 168, 0.22);
 }
