@@ -1,5 +1,7 @@
 import asyncio
+import functools
 import json
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,11 +16,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# claude --output-format stream-json은 이미지 Read 결과(base64)처럼 수 MB짜리 JSON을
-# "한 줄"로 내보낸다. StreamReader 기본 버퍼(64KB)로는 그 줄에서 스트림이 끊기므로 넉넉히 잡는다.
-STREAM_LIMIT = 1 << 20
+# 세션 목록 한 줄에 들어가는 길이. 이보다 길면 어차피 화면에서 잘린다.
+MAX_TITLE_CHARS = 80
 
-# 그래도 한 줄이 이만큼을 넘으면 메모리를 지키기 위해 잘라낸다(잘린 줄은 raw 이벤트로 남는다).
+
+def default_title(prompt: str) -> str:
+    """지시문 첫 줄을 그대로 이름으로 쓴다 — 목록에서 찾는 단서는 결국 무엇을 시켰나다."""
+    first = next((line.strip() for line in (prompt or "").splitlines() if line.strip()), "")
+    if not first:
+        return "제목 없음"
+    return first if len(first) <= MAX_TITLE_CHARS else first[:MAX_TITLE_CHARS] + "..."
+
+
+# claude --output-format stream-json은 이미지 Read 결과(base64)처럼 수 MB짜리 JSON을
+# "한 줄"로 내보낸다. 한 줄이 이만큼을 넘으면 메모리를 지키기 위해 잘라낸다.
 MAX_LINE_BYTES = 8 << 20
 
 # 이벤트 하나가 들고 갈 원본(data)의 상한. 이걸 넘으면 요약으로 대체한다.
@@ -29,8 +40,9 @@ class RunState:
     def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
                  stage_title: str, agent_key: str, agent_label: str, prompt: str,
                  full_prompt: str, project: Optional[str] = None,
-                 model: str = "", effort: str = ""):
+                 model: str = "", effort: str = "", title: str = ""):
         self.id = run_id
+        self.title = title or default_title(prompt)
         self.user_id = user_id
         self.agent_dir = agent_dir
         self.stage_key = stage_key
@@ -48,12 +60,13 @@ class RunState:
         self.exit_code: Optional[int] = None
         self.events: List[LogEvent] = []
         self.subscribers: List[asyncio.Queue] = []
-        self.process: Optional[asyncio.subprocess.Process] = None
+        self.process: Optional[subprocess.Popen] = None
         self._seq = 0
 
     def summary(self) -> RunSummary:
         return RunSummary(
             id=self.id,
+            title=self.title,
             agent_key=self.agent_key,
             agent_label=self.agent_label,
             stage_key=self.stage_key,
@@ -190,61 +203,47 @@ def _handle_stream_line(run: RunState, raw_line: str):
     run._emit("raw", text=_truncate(json.dumps(raw, ensure_ascii=False)[:500]), data=raw)
 
 
-async def _read_lines(stream: asyncio.StreamReader):
-    """길이 제한 없이 한 줄씩 돌려준다.
+def _pump(run: "RunState", stream, loop: asyncio.AbstractEventLoop, is_stderr: bool) -> None:
+    """자식 프로세스의 파이프 한 쪽을 스레드에서 끝까지 읽는다.
 
-    `async for line in stream`(= readline)은 버퍼 한도를 넘는 줄을 만나면
-    ValueError("Separator is found, but chunk is longer than limit")를 던지고 스트림 전체를
-    끊어버린다. 실제로 intent 분석이 요구사항 이미지를 Read하는 순간 이 예외로 run이 죽었다.
-    여기서는 LimitOverrunError를 받아 조각을 이어붙이는 방식으로 긴 줄도 끝까지 읽는다.
+    읽기는 스레드에서 하되 이벤트를 만드는 일은 반드시 이벤트 루프에서 해야 한다 —
+    run.events 추가와 asyncio.Queue.put_nowait는 스레드 안전하지 않다. 그래서 줄만
+    스레드에서 뽑고 해석은 call_soon_threadsafe로 루프에 넘긴다.
     """
-    buf = bytearray()
-    while True:
-        try:
-            chunk = await stream.readuntil(b"\n")
-        except asyncio.LimitOverrunError as exc:
-            # 한도 안에서 개행을 못 찾음 -> 지금까지 확인한 만큼 가져와 이어붙이고 계속 찾는다.
-            buf += await stream.readexactly(exc.consumed)
-            if len(buf) > MAX_LINE_BYTES:
-                del buf[MAX_LINE_BYTES:]
-            continue
-        except asyncio.IncompleteReadError as exc:
-            buf += exc.partial
-            if buf:
-                yield bytes(buf)
-            return
-        buf += chunk
-        yield bytes(buf[:MAX_LINE_BYTES])
-        buf.clear()
+    for raw in iter(stream.readline, b""):
+        # stream-json 한 줄이 수 MB(이미지 Read의 base64)까지 커진다. 메모리를 지키려 자른다.
+        line = raw[:MAX_LINE_BYTES].decode("utf-8", errors="replace")
+        if is_stderr:
+            text = line.rstrip()
+            if text:
+                loop.call_soon_threadsafe(
+                    functools.partial(run._emit, "stderr", text=_truncate(text))
+                )
+        else:
+            loop.call_soon_threadsafe(_handle_stream_line, run, line)
 
 
-async def _pump_stdout(run: RunState):
-    assert run.process is not None
-    assert run.process.stdout is not None
-    async for line_bytes in _read_lines(run.process.stdout):
-        _handle_stream_line(run, line_bytes.decode("utf-8", errors="replace"))
-
-
-async def _pump_stderr(run: RunState):
-    assert run.process is not None
-    assert run.process.stderr is not None
-    async for line_bytes in _read_lines(run.process.stderr):
-        line = line_bytes.decode("utf-8", errors="replace").rstrip()
-        if line:
-            run._emit("stderr", text=_truncate(line))
-
-
-async def _terminate(process: asyncio.subprocess.Process):
+async def _terminate(process: subprocess.Popen) -> None:
     if process.returncode is not None:
         return
     process.terminate()
     try:
-        await asyncio.wait_for(process.wait(), timeout=5)
+        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=5)
     except asyncio.TimeoutError:
         process.kill()
 
 
 async def _execute(run: RunState):
+    """claude CLI를 돌리고 그 출력을 이벤트로 흘려보낸다.
+
+    프로세스는 asyncio가 아니라 스레드 위의 subprocess.Popen으로 띄운다. 윈도우에서
+    uvicorn을 --reload로 켜면 이벤트 루프가 SelectorEventLoop가 되는데(uvicorn
+    loops/asyncio.py: use_subprocess면 Selector), 이 루프는 asyncio 서브프로세스를
+    아예 지원하지 않아 create_subprocess_exec가 NotImplementedError를 던졌다. 그 예외는
+    아무도 회수하지 않는 태스크 안에서 조용히 사라졌고, run은 영원히 "running"인 채
+    이벤트가 한 건도 안 나와 화면에는 "연결 중"만 남았다. 스레드+Popen은 루프 종류를
+    가리지 않으므로, 어떻게 띄운 백엔드에서도 똑같이 돈다.
+    """
     argv = [
         CLAUDE_BIN,
         "-p", run.full_prompt,
@@ -261,16 +260,22 @@ async def _execute(run: RunState):
         argv += ["--model", run.model]
     if run.effort:
         argv += ["--effort", run.effort]
+
+    loop = asyncio.get_running_loop()
     try:
-        run.process = await asyncio.create_subprocess_exec(
-            *argv,
+        run.process = await asyncio.to_thread(
+            subprocess.Popen,
+            argv,
             cwd=run.agent_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=STREAM_LIMIT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except FileNotFoundError:
         run._emit("stderr", text=f"'{CLAUDE_BIN}' 실행 파일을 찾을 수 없습니다. PATH를 확인하세요.")
+        run._finish("error", None)
+        return
+    except Exception as exc:  # noqa: BLE001 - 어떤 이유로든 못 띄우면 화면에 남겨야 한다
+        run._emit("stderr", text=f"claude CLI를 실행하지 못했습니다: {exc!r}")
         run._finish("error", None)
         return
 
@@ -279,7 +284,9 @@ async def _execute(run: RunState):
     try:
         # return_exceptions=True: 한쪽 pump가 죽어도 다른 쪽 로그를 끝까지 받아 UI에 남긴다.
         results = await asyncio.gather(
-            _pump_stdout(run), _pump_stderr(run), return_exceptions=True
+            asyncio.to_thread(_pump, run, run.process.stdout, loop, False),
+            asyncio.to_thread(_pump, run, run.process.stderr, loop, True),
+            return_exceptions=True,
         )
         failures = [r for r in results if isinstance(r, Exception)]
         for failure in failures:
@@ -287,7 +294,7 @@ async def _execute(run: RunState):
         if failures:
             # 파이프를 더 못 읽으면 자식이 write에서 막혀 wait()가 끝나지 않는다. 먼저 종료시킨다.
             await _terminate(run.process)
-        exit_code = await run.process.wait()
+        exit_code = await asyncio.to_thread(run.process.wait)
         status = "error" if failures or exit_code != 0 else "success"
         run._finish(status, exit_code)
     except asyncio.CancelledError:
@@ -297,7 +304,7 @@ async def _execute(run: RunState):
         run._finish("stopped", None)
         raise
     except Exception as exc:  # noqa: BLE001 - surface any unexpected failure to the UI
-        run._emit("stderr", text=f"실행 중 예외 발생: {exc}")
+        run._emit("stderr", text=f"실행 중 예외 발생: {exc!r}")
         await _terminate(run.process)
         run._finish("error", None)
 
@@ -346,13 +353,38 @@ class RunManager:
             key=lambda r: r.started_at, reverse=True,
         )]
 
+    def rename_run(self, run_id: str, title: str) -> Optional[RunState]:
+        run = self.runs.get(run_id)
+        if run is None:
+            return None
+        cleaned = (title or "").strip()
+        # 빈 이름으로 지우면 목록에서 어느 줄인지 알아볼 수 없게 된다 — 원래 이름으로 되돌린다.
+        run.title = (cleaned[:MAX_TITLE_CHARS] or default_title(run.prompt))
+        return run
+
+    async def delete_run(self, run_id: str) -> bool:
+        run = self.runs.get(run_id)
+        if run is None:
+            return False
+        # 도는 중인 것을 목록에서만 지우면 프로세스는 남아 계속 서버를 건드린다. 먼저 멈춘다.
+        if run.status == "running":
+            await self.stop_run(run_id)
+        task = self._tasks.pop(run_id, None)
+        if task and not task.done():
+            task.cancel()
+        # 구독 중인 WebSocket은 sentinel을 받아야 스스로 닫는다.
+        for queue in list(run.subscribers):
+            queue.put_nowait(None)
+        self.runs.pop(run_id, None)
+        return True
+
     async def stop_run(self, run_id: str) -> bool:
         run = self.runs.get(run_id)
         if run is None or run.process is None or run.status != "running":
             return False
         run.process.terminate()
         try:
-            await asyncio.wait_for(run.process.wait(), timeout=5)
+            await asyncio.wait_for(asyncio.to_thread(run.process.wait), timeout=5)
         except asyncio.TimeoutError:
             run.process.kill()
         return True

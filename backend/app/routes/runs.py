@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import current_user, require_agent_dir
-from ..models import CreateRunRequest, RunSummary
+from ..models import CreateRunRequest, RenameRunRequest, RunSummary
 from ..llm_models import check_choice
 from ..projects import project_exists
 from ..runner import run_manager
@@ -41,6 +41,24 @@ async def get_run(run_id: str, user: User = Depends(current_user)):
     if run is None or run.user_id != user.id:
         raise HTTPException(404, "run not found")
     return {"summary": run.summary(), "events": run.events}
+
+
+@router.patch("/api/runs/{run_id}", response_model=RunSummary)
+async def rename_run(run_id: str, req: RenameRunRequest, user: User = Depends(current_user)):
+    run = run_manager.get_run(run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    renamed = run_manager.rename_run(run_id, req.title)
+    assert renamed is not None
+    return renamed.summary()
+
+
+@router.delete("/api/runs/{run_id}", status_code=204)
+async def delete_run(run_id: str, user: User = Depends(current_user)):
+    run = run_manager.get_run(run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    await run_manager.delete_run(run_id)
 
 
 @router.post("/api/runs/{run_id}/stop")

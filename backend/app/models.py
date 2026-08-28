@@ -15,6 +15,10 @@ class CreateRunRequest(BaseModel):
     effort: Optional[str] = None
 
 
+class RenameRunRequest(BaseModel):
+    title: str
+
+
 class CreateProjectRequest(BaseModel):
     name: str
 
@@ -59,6 +63,8 @@ class AuthResponse(BaseModel):
 
 class RunSummary(BaseModel):
     id: str
+    # 화면에서 이 실행을 부르는 이름. 처음에는 지시문 첫 줄에서 따오고, 사용자가 바꿀 수 있다.
+    title: str
     agent_key: str
     agent_label: str
     stage_key: str
@@ -76,7 +82,9 @@ class RunSummary(BaseModel):
 
 
 # kind: "system"(세션 시작) | "assistant"(텍스트/사고) | "tool_use" | "tool_result"
-#     | "hook"(PreToolUse/PostToolUse/Stop - policy-gate, audit-log) | "result"(최종 요약)
+#     | "hook"(PreToolUse/PostToolUse/Stop — 대상 저장소에 hook 이 있을 때만 뜬다.
+#       architecture-agent 본체는 hook 을 걷어냈지만 포크에는 남아 있을 수 있어 그대로 받는다)
+#     | "result"(최종 요약)
 #     | "stderr" | "raw"(파싱 실패 원본)
 class LogEvent(BaseModel):
     seq: int

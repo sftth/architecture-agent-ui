@@ -22,8 +22,6 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)---\s*\n", re.DOTALL)
 # frontmatter는 중첩 없는 flat 매핑이므로, 들여쓰기 없는 `key: value` 줄만 새 키로 본다.
 LOOSE_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*)$")
 
-MUTATING_TOOLS = {"Bash", "Write"}
-
 # 도메인 폴더 -> (표시 순서, 한글 타이틀, 부제). 실제 파이프라인 의존 순서를 따른다
 # (예: infra-account-impl은 middleware 설치보다 먼저 실행되어야 함).
 STAGE_META = {
@@ -71,7 +69,6 @@ def _loose_frontmatter(block: str) -> dict:
             # 여러 줄에 걸친 값은 한 줄로 이어붙인다.
             meta[key] = f"{meta[key]} {line.strip()}".strip()
     # `tools: [Bash, Write]` 형태도 콤마 분리로 넘길 수 있게 대괄호를 벗긴다.
-    # (안 벗기면 "[Bash"로 읽혀 mutating 판정이 조용히 빠진다.)
     if isinstance(meta.get("tools"), str):
         meta["tools"] = meta["tools"].strip().strip("[]")
     return meta
@@ -112,7 +109,6 @@ def _parse_agent_file(path: Path) -> Optional[dict]:
         "key": str(name).strip(),
         "description": description,
         "tools": tool_names,
-        "mutating": any(t in MUTATING_TOOLS for t in tool_names),
     }
 
 
@@ -145,7 +141,6 @@ def build_stages(agent_dir: Path) -> list:
                         "key": a["key"],
                         "label": a["key"],
                         "role": a["description"],
-                        "mutating": a["mutating"],
                         "tools": a["tools"],
                     }
                     for a in agents
@@ -168,7 +163,6 @@ def build_stages(agent_dir: Path) -> list:
                         "key": a["key"],
                         "label": a["key"],
                         "role": a["description"],
-                        "mutating": a["mutating"],
                         "tools": a["tools"],
                     }
                     for a in agents
