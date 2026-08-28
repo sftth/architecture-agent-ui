@@ -30,28 +30,63 @@ export function commandableAgents(stage: StageDef): AgentDef[] {
   return plan ? [plan] : stage.agents;
 }
 
+/** Agent 도구로 위임을 건 tool_use 인가 — 그렇다면 어느 sub-agent 인가. */
+function dispatchedAgent(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const block = data as Record<string, unknown>;
+  const name = block.name;
+  if (name !== "Agent" && name !== "Task") return null;
+  const input = block.input;
+  if (!input || typeof input !== "object") return null;
+  const target = (input as Record<string, unknown>).subagent_type;
+  return typeof target === "string" ? target : null;
+}
+
+function idOf(data: unknown, field: string): string | null {
+  if (!data || typeof data !== "object") return null;
+  const value = (data as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : null;
+}
+
 /**
- * 실행 로그에서 "지금 어느 sub-agent가 돌고 있나"를 읽어낸다.
+ * 지금 돌고 있는 sub-agent 들. 동시에 여럿일 수 있다 —
+ * plan 하나가 gitlab·jenkins 를 나란히 설치시키는 식이다.
  *
- * plan이 impl·eval을 부르는 것은 claude CLI 한 프로세스 안에서 일어나므로 run 기록이
- * 따로 생기지 않는다. 화면에 남는 단서는 로그뿐이라, 이 값은 로그를 뒤에서부터 훑어
- * 짐작한 것이다 — 정확한 신호가 아니라 추정이다.
+ * 두 갈래로 읽는다.
  *
- * 이름을 둘 이상 부르는 줄은 건너뛴다. plan은 시작할 때 "convert -> impl -> eval 순서로
- * 진행합니다"처럼 앞으로 할 일을 통째로 나열하고 끝에도 요약을 남기는데, 그건 "지금
- * 그것"이 아니라 계획표다. 하나만 지목한 줄이라야 지금 부른 것으로 본다.
+ * 1. Agent 도구 호출 — `Agent({subagent_type: "..."})` 의 tool_use 가 시작이고, 같은 id 의
+ *    tool_result 가 끝이다. 짝이 안 닫힌 것이 곧 지금 도는 것이라, 동시 실행이 그대로 잡힌다.
+ *    이건 추정이 아니라 로그에 박힌 신호다.
+ * 2. 그런 호출이 하나도 안 열려 있으면, plan 이 말로 지목한 줄에서 짐작한다.
+ *    architecture-agent 의 plan 문서 다수가 Agent 도구를 직접 부르지 않고
+ *    `@agent-name` 을 출력하는 방식이라(intent-plan.md), 그 경우 1번 신호가 아예 없다.
+ *    이름을 둘 이상 부르는 줄은 계획표이지 "지금 그것"이 아니므로 건너뛴다.
  */
-export function activeSubAgent(events: LogEvent[], keys: string[]): string | null {
+export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
+  const known = new Set(keys);
+  const open = new Map<string, string>(); // tool_use id -> agent key
+
+  for (const event of events) {
+    if (event.kind === "run_end") return [];
+    if (event.kind === "tool_use") {
+      const target = dispatchedAgent(event.data);
+      const id = idOf(event.data, "id");
+      if (target && id && known.has(target)) open.set(id, target);
+    } else if (event.kind === "tool_result") {
+      const id = idOf(event.data, "tool_use_id");
+      if (id) open.delete(id);
+    }
+  }
+  if (open.size > 0) return [...new Set(open.values())];
+
+  // 2번 갈래 — 열린 위임이 없을 때만.
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
-    // 끝난 run에는 도는 것이 없다.
-    if (event.kind === "run_end") return null;
-    // 위임은 Agent 도구 호출(tool_use)이나 plan이 말로 지목한 줄(assistant)로 나타난다.
     if (event.kind !== "tool_use" && event.kind !== "assistant") continue;
     const text = event.text ?? "";
     if (!text) continue;
     const hits = keys.filter((key) => text.includes(key));
-    if (hits.length === 1) return hits[0];
+    if (hits.length === 1) return [hits[0]];
   }
-  return null;
+  return [];
 }

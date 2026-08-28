@@ -34,7 +34,7 @@ import {
   UserProfile,
 } from "./types";
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
-import { activeSubAgent, planOf } from "./harness";
+import { activeSubAgents, planOf } from "./harness";
 import "./App.css";
 
 export default function App() {
@@ -281,8 +281,8 @@ export default function App() {
     () => stages.flatMap((stage) => stage.agents.map((a) => a.key)),
     [stages],
   );
-  const activeAgent = useMemo(
-    () => (activeRun?.status === "running" ? activeSubAgent(activeEvents, allAgentKeys) : null),
+  const activeAgents = useMemo(
+    () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
 
@@ -345,7 +345,7 @@ export default function App() {
             stages={visibleStages}
             /* 카탈로그가 아직 안 온 상태를 "이 단계엔 없음"으로 오해시키지 않는다. */
             loaded={stages.length > 0}
-            activeAgent={activeAgent}
+            activeAgents={activeAgents}
             common={common}
             runs={runs}
             selectedAgent={agentKey}
