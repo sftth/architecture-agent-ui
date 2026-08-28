@@ -103,9 +103,11 @@ export default function HarnessStrip({
 
   return (
     <section className="harness" aria-label={`${stage.title} 하네스`}>
+      {/* 머리는 스테이지 이름 한 줄이면 된다. "HARNESS · plan → impl ⇄ eval" 은 바로 아래
+          카드 세 장이 PLAN/IMPL/EVAL 과 화살표로 이미 말하고 있었고, 스테이지 부제는
+          단계마다 같은 자리를 두 줄씩 먹었다. 둘 다 걷어내 세로 공간을 돌려준다. */}
       <header className="harness-head">
-        <span className="harness-eyebrow">HARNESS</span>
-        <span className="harness-formula">plan → impl ⇄ eval</span>
+        <h3 className="harness-stage-name">{stage.title}</h3>
         {/* 구현 단계처럼 스테이지가 여러 개인 곳에서는 여기서 갈아탄다.
             갈아타면 그 스테이지의 plan을 겨눈다 — 지시를 받는 것은 언제나 plan이다. */}
         {stages.length > 1 && (
@@ -129,10 +131,6 @@ export default function HarnessStrip({
         )}
       </header>
 
-      <div className="harness-stage">
-        <h3 className="harness-stage-name">{stage.title}</h3>
-        <p className="harness-stage-note">{stage.subtitle}</p>
-      </div>
 
       <div className="harness-flow">
         {ROLES.map((role, i) => (

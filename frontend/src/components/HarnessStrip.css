@@ -32,19 +32,6 @@
   flex-wrap: wrap;
 }
 
-.harness-eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  color: var(--line-cyan);
-}
-
-.harness-formula {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-}
-
 .harness-tabs {
   margin-left: auto;
   display: flex;
@@ -74,31 +61,14 @@
   color: var(--paper-100);
 }
 
-.harness-stage {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
 .harness-stage-name {
   margin: 0;
-  flex: none;
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-label);
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--paper-100);
-}
-
-.harness-stage-note {
-  margin: 0;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* 카드 세 장 + 사이의 획. 획은 카드 뒤 슬롯의 오른쪽 여백에 절대 배치해,
