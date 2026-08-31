@@ -162,7 +162,13 @@ def _handle_stream_line(run: RunState, raw_line: str):
 
     if ev_type == "rate_limit_event":
         status = (raw.get("rate_limit_info") or {}).get("status", "unknown")
-        run._emit("system", text=f"rate limit 상태: {status}", data=raw)
+        # allowed 는 "아무 일 없음"이라 화면에서 걸러지는 잡음이지만, 그 밖의 상태는
+        # 실행이 여기서 멈춘 이유일 수 있다. 걸릴 자리에 두려면 종류부터 달라야 한다 —
+        # 화면이 문구를 뒤져 판정하게 만들지 않는다.
+        if status == "allowed":
+            run._emit("system", text=f"rate limit 상태: {status}", data=raw)
+        else:
+            run._emit("stderr", text=f"rate limit: {status} — 실행이 지연되거나 막힐 수 있습니다", data=raw)
         return
 
     if ev_type in ("assistant", "user"):
