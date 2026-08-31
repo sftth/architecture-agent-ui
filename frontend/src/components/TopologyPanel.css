@@ -14,7 +14,7 @@
 .topo-head {
   flex: none;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
@@ -39,6 +39,7 @@
 .topo-verdict--ok { background: rgba(89, 201, 165, 0.16); color: var(--gate-mint); }
 .topo-verdict--warn { background: rgba(242, 166, 90, 0.16); color: var(--signal-amber); }
 .topo-verdict--crit { background: rgba(225, 102, 124, 0.16); color: var(--gate-rose); }
+.topo-verdict--info,
 .topo-verdict--na { background: var(--ink-800); color: var(--paper-500); }
 
 .topo-note {
@@ -52,8 +53,66 @@
   text-overflow: ellipsis;
 }
 
-.topo-reload {
+/* ── 갱신 방식 ─────────────────────────────────────────── */
+.poll {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.poll-toggle {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--ink-800);
+  border-radius: 999px;
+}
+
+.poll-seg {
+  padding: 2px 11px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--paper-500);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.poll-seg--on {
+  background: var(--ink-850);
+  color: var(--paper-100);
+  box-shadow: inset 0 0 0 1px var(--line-cyan-dim);
+}
+
+.poll-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.poll-every {
+  padding: 2px 6px;
+  background: var(--ink-850);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-sm);
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+/* 자동으로 돌고 있다는 신호. 멈춰 있는 화면과 구별되어야 한다. */
+.poll-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-cyan);
+  animation: topo-pulse 1.6s ease-in-out infinite;
+}
+
+.poll-now {
   background: none;
   border: 1px solid var(--line-cyan-dim);
   border-radius: 999px;
@@ -64,9 +123,16 @@
   cursor: pointer;
 }
 
-.topo-reload:hover {
+.poll-now:hover {
   border-color: var(--line-cyan);
   color: var(--paper-100);
+}
+
+.poll-read {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  white-space: nowrap;
 }
 
 .topo-blank {
@@ -100,8 +166,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+}
+
+/* 좌표계. 내용만큼 자라므로 선이 스크롤과 함께 움직인다. */
+.topo-canvas {
+  position: relative;
+  min-height: 100%;
 }
 
 .topo-row {
@@ -113,7 +183,7 @@
 .topo-tier {
   flex: none;
   width: 3em;
-  padding-top: 9px;
+  padding-top: 10px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
@@ -125,95 +195,143 @@
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  justify-content: space-evenly;
+  gap: var(--space-3) var(--space-5);
 }
 
 .topo-none {
-  padding-top: 9px;
+  padding-top: 10px;
   font-family: var(--font-body);
   font-size: var(--text-2xs);
   color: var(--line-cyan-dim);
 }
 
-/* 두 층을 잇는 선. 간선의 근거는 설계서에서 나온 upstreams 다. */
-.topo-link {
+/* 두 층 사이 — 선이 지나갈 자리. */
+.topo-gap {
+  height: 84px;
+}
+
+/* ── 선 ─────────────────────────────────────────────────
+   카드 뒤에 깔린다. 값을 읽는 데 선이 방해가 되면 안 된다. */
+.topo-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.wire-path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+
+/* 닿는 선 — 점이 흐른다. */
+.wire--up {
+  color: var(--line-cyan);
+}
+
+.wire--up .wire-path {
+  opacity: 0.45;
+  stroke-dasharray: 3 5;
+}
+
+.wire-dot {
+  fill: var(--line-cyan);
+}
+
+/* 닿지 않는 선 — 흐르지 않는다. 색과 함께 "끊겼다"가 형태로도 보여야 한다. */
+.wire--down {
+  color: var(--gate-rose);
+}
+
+.wire--down .wire-path {
+  opacity: 0.9;
+  stroke-dasharray: 7 4;
+  animation: wire-warn 1.2s ease-in-out infinite;
+}
+
+@keyframes wire-warn {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.32; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wire--down .wire-path { animation: none; }
+  .wire-dot { display: none; }
+}
+
+/* ── 랙 카드 ────────────────────────────────────────────
+   판정 색을 테두리에 두르고, 그 대상을 먼저 조이는 지표를 게이지로 세운다. */
+.rack {
+  position: relative;
+  z-index: 1;
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: calc(3em + var(--space-3));
-  padding: var(--space-2) 0;
-}
-
-.topo-link-line {
-  width: 1px;
-  height: 18px;
-  margin-left: 22px;
-  border-left: 1px dashed var(--line-cyan-dim);
-}
-
-.topo-link-note {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-}
-
-/* ── 노드 ───────────────────────────────────────────────
-   판정 색을 테두리에 두르고 상태 점을 단다. 눌러서 상세를 연다. */
-.tnodebox {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 148px;
-  padding: 7px 11px;
+  flex-direction: column;
+  gap: 5px;
+  width: 196px;
+  padding: 9px 11px 10px;
   background: var(--ink-850);
   border: 1.5px solid var(--line-cyan-dim);
-  border-radius: 8px;
+  border-radius: 10px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.tnodebox:hover {
+.rack:hover,
+.rack:focus-visible {
   background: var(--ink-800);
+  outline: none;
 }
 
-.tnodebox--ok { border-color: var(--gate-mint-dim); }
-.tnodebox--warn { border-color: var(--signal-amber); }
-.tnodebox--crit { border-color: var(--gate-rose); }
-.tnodebox--na { border-color: var(--line-cyan-dim); }
+.rack--ok { border-color: var(--gate-mint-dim); }
+.rack--warn {
+  border-color: var(--signal-amber);
+  box-shadow: 0 0 0 3px rgba(242, 166, 90, 0.08);
+}
+.rack--crit {
+  border-color: var(--gate-rose);
+  box-shadow: 0 0 0 3px rgba(225, 102, 124, 0.1);
+}
+.rack--info,
+.rack--na { border-color: var(--line-cyan-dim); }
 
-.tnodebox-dot {
+.rack-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rack-dot {
   flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
 }
 
-.tnodebox-dot--ok { background: var(--gate-mint); }
-.tnodebox-dot--warn {
+.rack-dot--ok { background: var(--gate-mint); }
+.rack-dot--warn {
   background: var(--signal-amber);
   animation: topo-pulse 1.4s ease-in-out infinite;
 }
-.tnodebox-dot--crit {
+.rack-dot--crit {
   background: var(--gate-rose);
   animation: topo-pulse 1s ease-in-out infinite;
 }
-.tnodebox-dot--na { background: var(--paper-500); }
+.rack-dot--info,
+.rack-dot--na { background: var(--paper-500); }
 
 @keyframes topo-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
-.tnodebox-main {
+.rack-id {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.tnodebox-id {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--paper-100);
@@ -222,16 +340,10 @@
   text-overflow: ellipsis;
 }
 
-.tnodebox-sub {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-}
-
 /* 주의·위험 항목 수 — 눌러 볼 이유가 여기 있다. */
-.tnodebox-bad {
+.rack-bad {
   flex: none;
-  padding: 1px 7px;
+  padding: 0 6px;
   border-radius: 999px;
   background: rgba(242, 166, 90, 0.18);
   color: var(--signal-amber);
@@ -239,9 +351,253 @@
   font-size: var(--text-2xs);
 }
 
-.tnodebox--crit .tnodebox-bad {
+.rack--crit .rack-bad {
   background: rgba(225, 102, 124, 0.18);
   color: var(--gate-rose);
+}
+
+.rack-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rack-body {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+/* 대표 게이지 — 아래에서 차오른다. 랙의 물통처럼. */
+.rack-gauge {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 46px;
+}
+
+.rack-gauge-bar {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  background: var(--ink-900);
+  border: 1px solid var(--tick-quiet);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rack-gauge-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 2px;
+  transition: height 0.5s ease;
+}
+
+.rack-gauge-fill--ok { background: var(--gate-mint); }
+.rack-gauge-fill--warn { background: var(--signal-amber); }
+.rack-gauge-fill--crit { background: var(--gate-rose); }
+.rack-gauge-fill--info,
+.rack-gauge-fill--na { background: var(--paper-500); }
+
+.rack-gauge-pct {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.rack-gauge-pct--ok { color: var(--gate-mint); }
+.rack-gauge-pct--warn { color: var(--signal-amber); }
+.rack-gauge-pct--crit { color: var(--gate-rose); }
+.rack-gauge-pct--info,
+.rack-gauge-pct--na { color: var(--paper-500); }
+
+.rack-gauge-label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--paper-500);
+  white-space: nowrap;
+}
+
+.rack-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rack-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.rack-metric-label {
+  flex: none;
+  width: 2.1em;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  color: var(--paper-500);
+}
+
+.rack-metric-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+}
+
+.rack-metric-value--warn { color: var(--signal-amber); }
+.rack-metric-value--crit { color: var(--gate-rose); }
+
+/* 포트는 값이자 상태다 — 리슨 중인지가 색에 실린다. */
+.rack-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.rack-port {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--ink-900);
+  box-shadow: inset 0 0 0 1px var(--tick-quiet);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--paper-300);
+}
+
+.rack-port em {
+  margin-left: 4px;
+  font-style: normal;
+  color: var(--paper-500);
+}
+
+.rack-port--ok { color: var(--gate-mint); }
+.rack-port--warn { color: var(--signal-amber); }
+.rack-port--crit { color: var(--gate-rose); }
+.rack-port--na { color: var(--paper-500); }
+
+/* ── 롤오버 카드 ────────────────────────────────────────
+   기본 title 대신. 값 옆에 기준이 서야 "이게 높은 건가"에 답이 된다. */
+.hovercard {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-3);
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  pointer-events: none;
+}
+
+.hovercard-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--paper-100);
+}
+
+.hovercard-head strong {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.hovercard-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.hovercard-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.hovercard-table th,
+.hovercard-table td {
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.hovercard-table thead th {
+  border-bottom: 1px solid var(--line-cyan-dim);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--paper-500);
+}
+
+.hovercard-table tbody th {
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--paper-300);
+  white-space: nowrap;
+}
+
+.hovercard-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.hovercard-v--ok { color: var(--paper-100); }
+.hovercard-v--warn { color: var(--signal-amber); }
+.hovercard-v--crit { color: var(--gate-rose); }
+.hovercard-v--info,
+.hovercard-v--na { color: var(--paper-500); }
+
+.hovercard-rule {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--paper-500);
+}
+
+/* 문제 있는 줄은 배경으로도 짚어 준다 — 표가 길어지면 색만으로는 놓친다. */
+.hovercard-tr--warn td,
+.hovercard-tr--warn th { background: rgba(242, 166, 90, 0.07); }
+.hovercard-tr--crit td,
+.hovercard-tr--crit th { background: rgba(225, 102, 124, 0.08); }
+
+.hovercard-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.hovercard-link {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.hovercard-link--up { background: var(--ink-800); color: var(--line-cyan); }
+.hovercard-link--down { background: rgba(225, 102, 124, 0.14); color: var(--gate-rose); }
+
+.hovercard-foot {
+  padding-top: 2px;
+  border-top: 1px solid var(--tick-quiet);
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--paper-500);
 }
 
 /* ── 상세 창 ────────────────────────────────────────── */
@@ -259,7 +615,7 @@
 .topo-detail {
   display: flex;
   flex-direction: column;
-  width: min(720px, 100%);
+  width: min(760px, 100%);
   max-height: 100%;
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
@@ -307,13 +663,14 @@
 }
 
 .topo-ref {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-2);
   font-family: var(--font-body);
   font-size: var(--text-2xs);
   color: var(--paper-500);
 }
 
 .topo-ref code {
+  margin-right: 6px;
   font-family: var(--font-mono);
   color: var(--line-cyan);
 }
@@ -341,8 +698,19 @@
   vertical-align: top;
 }
 
+/* 점검 항목 코드 — 보고서와 같은 이름으로 부를 수 있어야 한다. */
+.topo-cid {
+  display: inline-block;
+  min-width: 2.6em;
+  margin-right: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--paper-500);
+}
+
 .topo-cnote {
   display: block;
+  margin-left: calc(2.6em + 6px);
   font-size: var(--text-2xs);
   color: var(--paper-500);
 }
@@ -366,9 +734,9 @@
 .topo-v--ok { color: var(--gate-mint); }
 .topo-v--warn { color: var(--signal-amber); }
 .topo-v--crit { color: var(--gate-rose); }
+.topo-v--info,
 .topo-v--na { color: var(--paper-500); }
 
-/* 문제 있는 줄은 배경으로도 짚어 준다 — 표가 길어지면 색만으로는 놓친다. */
 .topo-tr--warn td { background: rgba(242, 166, 90, 0.06); }
 .topo-tr--crit td { background: rgba(225, 102, 124, 0.07); }
 
@@ -379,3 +747,26 @@
   font-size: var(--text-2xs);
   color: var(--paper-500);
 }
+
+/* 왜 이 색인지 — 값 옆이 아니라 카드 밑에 한 줄로. */
+.rack-why {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 1px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.rack-why em {
+  flex: none;
+  font-style: normal;
+  opacity: 0.75;
+}
+
+.rack-why--warn { background: rgba(242, 166, 90, 0.12); color: var(--signal-amber); }
+.rack-why--crit { background: rgba(225, 102, 124, 0.13); color: var(--gate-rose); }
