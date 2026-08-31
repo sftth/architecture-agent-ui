@@ -35,6 +35,8 @@ STAGE_META = {
     "k8s": (8, "Kubernetes", "Helm chart 생성 / 클러스터 관리"),
     "monitoring": (9, "모니터링", "Prometheus / Grafana / Scouter APM"),
     "common": (10, "공통 유틸리티", "LLM Wiki 조회 / md -> docx·HTML 산출물 변환"),
+    # operation/status/** — 설치가 아니라 관측이다. 대상을 바꾸지 않는 읽기 전용 도메인.
+    "operation": (11, "운영", "설계대로 설치된 WEB/WAS 런타임 상태 점검 (읽기 전용)"),
 }
 
 

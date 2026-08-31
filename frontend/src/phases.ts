@@ -1,7 +1,7 @@
 import { StageDef } from "./types";
 
 /** 상단 프로세스이자 화면 전환 메뉴. 세부 절차는 각 단계 안에 속한다. */
-export type PhaseId = "analyze" | "design" | "implement";
+export type PhaseId = "analyze" | "design" | "implement" | "operate";
 
 /** 화면에서 확인할 입력·산출물 자리. {project}는 고른 프로젝트로 바뀐다. */
 export interface PhaseIo {
@@ -62,6 +62,22 @@ export const PHASES: Phase[] = [
       { label: "보고서", path: "report/{project}" },
       { label: "스크립트", path: "output/{project}/scripts" },
       { label: "정식 문서", path: "output/{project}/doc" },
+    ],
+  },
+  {
+    id: "operate",
+    num: "04",
+    title: "운영",
+    caption: "설치된 WEB/WAS 상태 점검",
+    stageKeys: ["operation"],
+    // 점검 대상은 설계서에서 나온다 — 그래서 설계 산출물이 이 단계의 입력이다.
+    input: [
+      { label: "설계서", path: "output/{project}/design" },
+      { label: "확정 정보", path: "output/{project}/confirmed" },
+    ],
+    output: [
+      { label: "상태", path: "output/{project}/status" },
+      { label: "보고서", path: "report/{project}" },
     ],
   },
 ];

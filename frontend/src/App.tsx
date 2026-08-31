@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PhaseRail from "./components/PhaseRail";
 import HarnessStrip from "./components/HarnessStrip";
 import IoPanel from "./components/IoPanel";
+import TopologyPanel from "./components/TopologyPanel";
 import RunConsole from "./components/RunConsole";
 import Composer from "./components/Composer";
 import ProjectManager from "./components/ProjectManager";
@@ -362,18 +363,19 @@ export default function App() {
             loaded={stages.length > 0}
             activeAgents={activeAgents}
             common={common}
-            runs={runs}
             selectedAgent={agentKey}
             onSelectAgent={setAgentKey}
           />
 
           {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를
               말하면 이 표가 "그래서 뭐가 남았나"로 답한다 — 그래서 바로 아래에 붙인다. */}
-          <IoPanel
-            phase={phase}
-            project={project}
-            activeRun={activeRun}
-          />
+          {/* 운영 단계의 산출물은 status-middleware.json 하나이고, 그건 파일 목록으로
+              보는 것보다 토폴로지로 보는 편이 훨씬 낫다. 그래서 그 자리를 바꿔 끼운다. */}
+          {phase === "operate" ? (
+            <TopologyPanel project={project} />
+          ) : (
+            <IoPanel phase={phase} project={project} activeRun={activeRun} />
+          )}
 
         </main>
 

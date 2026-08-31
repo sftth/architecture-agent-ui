@@ -1,0 +1,381 @@
+/* 운영 단계의 WEB/WAS 토폴로지. 하네스와 같은 판 처리를 쓴다 —
+   가운데 칸의 두 번째 모듈 자리를 입출력 판 대신 이것이 차지한다. */
+.topo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 8px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.topo-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.topo-title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+/* 종합 판정 — 색이 곧 결론이다. */
+.topo-verdict {
+  flex: none;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.topo-verdict--ok { background: rgba(89, 201, 165, 0.16); color: var(--gate-mint); }
+.topo-verdict--warn { background: rgba(242, 166, 90, 0.16); color: var(--signal-amber); }
+.topo-verdict--crit { background: rgba(225, 102, 124, 0.16); color: var(--gate-rose); }
+.topo-verdict--na { background: var(--ink-800); color: var(--paper-500); }
+
+.topo-note {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.topo-reload {
+  flex: none;
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.topo-reload:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.topo-blank {
+  margin: 0;
+  padding: var(--space-4) 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--paper-500);
+  line-height: var(--leading-body);
+}
+
+.topo-blank code {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--ink-800);
+  color: var(--line-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.topo-err {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-2xs);
+  color: var(--gate-rose);
+}
+
+/* ── 층 배치 ────────────────────────────────────────────
+   WEB 이 위, WAS 가 아래. 요청이 흐르는 방향 그대로다. */
+.topo-map {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.topo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.topo-tier {
+  flex: none;
+  width: 3em;
+  padding-top: 9px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--paper-500);
+}
+
+.topo-nodes {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.topo-none {
+  padding-top: 9px;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--line-cyan-dim);
+}
+
+/* 두 층을 잇는 선. 간선의 근거는 설계서에서 나온 upstreams 다. */
+.topo-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: calc(3em + var(--space-3));
+  padding: var(--space-2) 0;
+}
+
+.topo-link-line {
+  width: 1px;
+  height: 18px;
+  margin-left: 22px;
+  border-left: 1px dashed var(--line-cyan-dim);
+}
+
+.topo-link-note {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+/* ── 노드 ───────────────────────────────────────────────
+   판정 색을 테두리에 두르고 상태 점을 단다. 눌러서 상세를 연다. */
+.tnodebox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 148px;
+  padding: 7px 11px;
+  background: var(--ink-850);
+  border: 1.5px solid var(--line-cyan-dim);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tnodebox:hover {
+  background: var(--ink-800);
+}
+
+.tnodebox--ok { border-color: var(--gate-mint-dim); }
+.tnodebox--warn { border-color: var(--signal-amber); }
+.tnodebox--crit { border-color: var(--gate-rose); }
+.tnodebox--na { border-color: var(--line-cyan-dim); }
+
+.tnodebox-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.tnodebox-dot--ok { background: var(--gate-mint); }
+.tnodebox-dot--warn {
+  background: var(--signal-amber);
+  animation: topo-pulse 1.4s ease-in-out infinite;
+}
+.tnodebox-dot--crit {
+  background: var(--gate-rose);
+  animation: topo-pulse 1s ease-in-out infinite;
+}
+.tnodebox-dot--na { background: var(--paper-500); }
+
+@keyframes topo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.tnodebox-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tnodebox-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--paper-100);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tnodebox-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+/* 주의·위험 항목 수 — 눌러 볼 이유가 여기 있다. */
+.tnodebox-bad {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(242, 166, 90, 0.18);
+  color: var(--signal-amber);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.tnodebox--crit .tnodebox-bad {
+  background: rgba(225, 102, 124, 0.18);
+  color: var(--gate-rose);
+}
+
+/* ── 상세 창 ────────────────────────────────────────── */
+.topo-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.topo-detail {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: 100%;
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.topo-detail-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-cyan-dim);
+}
+
+.topo-detail-sub {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.topo-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--paper-500);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.topo-close:hover { color: var(--paper-100); }
+
+.topo-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.topo-ref {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.topo-ref code {
+  font-family: var(--font-mono);
+  color: var(--line-cyan);
+}
+
+.topo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.topo-table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line-cyan-dim);
+  color: var(--paper-500);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.topo-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--tick-quiet);
+  vertical-align: top;
+}
+
+.topo-cnote {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.topo-val,
+.topo-rule {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+  white-space: nowrap;
+}
+
+.topo-rule { color: var(--paper-500); }
+
+.topo-v {
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.topo-v--ok { color: var(--gate-mint); }
+.topo-v--warn { color: var(--signal-amber); }
+.topo-v--crit { color: var(--gate-rose); }
+.topo-v--na { color: var(--paper-500); }
+
+/* 문제 있는 줄은 배경으로도 짚어 준다 — 표가 길어지면 색만으로는 놓친다. */
+.topo-tr--warn td { background: rgba(242, 166, 90, 0.06); }
+.topo-tr--crit td { background: rgba(225, 102, 124, 0.07); }
+
+.topo-notes {
+  margin: var(--space-3) 0 0;
+  padding-left: 1.2em;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
