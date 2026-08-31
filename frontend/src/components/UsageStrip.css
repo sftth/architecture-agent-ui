@@ -1,0 +1,67 @@
+/* 상단 이름표 줄에 얹히는 사용량 띠. 한 줄로 흐르고 세로 공간을 새로 먹지 않는다 —
+   머리를 한 줄로 줄여 공간을 확보해 둔 자리를 다시 내주지 않기 위해서다. */
+.usage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.usage-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.usage-item--quiet {
+  opacity: 0.6;
+}
+
+/* 무엇을 세는 값인지 — 값보다 한 단 죽여 둔다. */
+.usage-key {
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.usage-val {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+}
+
+.usage-val--ok { color: var(--gate-mint); }
+.usage-val--warn { color: var(--signal-amber); }
+.usage-val--bad { color: var(--gate-rose); }
+
+/* 곁들이는 값(초기화 시각·토큰·비용) */
+.usage-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.usage-sub--warn {
+  color: var(--signal-amber);
+}
+
+.usage-dot {
+  align-self: center;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--paper-500);
+}
+
+.usage-dot--ok { background: var(--gate-mint); }
+.usage-dot--warn { background: var(--signal-amber); }
+.usage-dot--bad { background: var(--gate-rose); }
+
+/* 좁아지면 곁들이는 값부터 접는다 — 상태와 창 이름은 끝까지 남긴다. */
+@media (max-width: 1100px) {
+  .usage-sub {
+    display: none;
+  }
+}

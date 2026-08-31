@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import current_user, require_agent_dir
-from ..models import CreateRunRequest, RenameRunRequest, RunSummary
+from ..models import CreateRunRequest, RenameRunRequest, RunSummary, UsageSummary
 from ..llm_models import check_choice
 from ..projects import project_exists
 from ..runner import run_manager
@@ -33,6 +33,19 @@ async def create_run(req: CreateRunRequest, user: User = Depends(current_user)):
 @router.get("/api/runs", response_model=list[RunSummary])
 async def list_runs(user: User = Depends(current_user)):
     return run_manager.list_runs(user.id)
+
+
+@router.get("/api/usage", response_model=UsageSummary)
+async def usage(user: User = Depends(current_user)):
+    """상단 띠가 읽는 값. 제한 창은 계정 전체, 누적은 이 계정의 run 들만 더한다."""
+    runs = [r for r in run_manager.runs.values() if r.user_id == user.id]
+    done = [r for r in runs if r.usage is not None]
+    return UsageSummary(
+        rate_limit=run_manager.rate_limit,
+        runs=len(runs),
+        tokens=sum(r.usage.total_tokens for r in done),
+        cost_usd=sum(r.usage.cost_usd for r in done),
+    )
 
 
 @router.get("/api/runs/{run_id}")

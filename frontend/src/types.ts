@@ -39,6 +39,32 @@ export interface ModelDef {
   efforts: string[];
 }
 
+/** claude CLI 가 흘려 주는 제한 창. 소비량·한도는 주지 않아 퍼센트는 만들 수 없다. */
+export interface RateLimit {
+  status: string;
+  /** "five_hour" / "seven_day" 등 지금 걸려 있는 창 */
+  kind: string | null;
+  /** unix epoch(초) */
+  resets_at: number | null;
+  using_overage: boolean;
+}
+
+export interface RunUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  cost_usd: number;
+}
+
+/** 화면 상단 띠가 읽는 값. */
+export interface UsageSummary {
+  rate_limit: RateLimit | null;
+  runs: number;
+  tokens: number;
+  cost_usd: number;
+}
+
 export type RunStatus = "running" | "success" | "error" | "stopped";
 
 export interface RunSummary {
@@ -59,6 +85,8 @@ export interface RunSummary {
   ended_at: string | null;
   exit_code: number | null;
   event_count: number;
+  /** 끝난 run 만 채워진다. */
+  usage: RunUsage | null;
 }
 
 export type LogEventKind =

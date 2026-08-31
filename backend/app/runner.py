@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from .agents_catalog import find_agent
 from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
-from .models import LogEvent, RunSummary
+from .models import LogEvent, RateLimit, RunSummary, RunUsage
 
 
 def _now() -> str:
@@ -43,6 +43,8 @@ class RunState:
                  model: str = "", effort: str = "", title: str = ""):
         self.id = run_id
         self.title = title or default_title(prompt)
+        # result 이벤트가 와야 채워진다.
+        self.usage: Optional[RunUsage] = None
         self.user_id = user_id
         self.agent_dir = agent_dir
         self.stage_key = stage_key
@@ -81,6 +83,7 @@ class RunState:
             ended_at=self.ended_at,
             exit_code=self.exit_code,
             event_count=len(self.events),
+            usage=self.usage,
         )
 
     def _emit(self, kind: str, *, text: Optional[str] = None, data=None,
@@ -161,7 +164,15 @@ def _handle_stream_line(run: RunState, raw_line: str):
         return
 
     if ev_type == "rate_limit_event":
-        status = (raw.get("rate_limit_info") or {}).get("status", "unknown")
+        info = raw.get("rate_limit_info") or {}
+        status = info.get("status", "unknown")
+        # 제한 창은 계정 전체에 걸리는 값이라 run 이 아니라 매니저가 들고 있는다.
+        run_manager.rate_limit = RateLimit(
+            status=str(status),
+            kind=info.get("rateLimitType"),
+            resets_at=info.get("resetsAt"),
+            using_overage=bool(info.get("isUsingOverage")),
+        )
         # allowed 는 "아무 일 없음"이라 화면에서 걸러지는 잡음이지만, 그 밖의 상태는
         # 실행이 여기서 멈춘 이유일 수 있다. 걸릴 자리에 두려면 종류부터 달라야 한다 —
         # 화면이 문구를 뒤져 판정하게 만들지 않는다.
@@ -202,6 +213,15 @@ def _handle_stream_line(run: RunState, raw_line: str):
         return
 
     if ev_type == "result":
+        # 이 run 이 실제로 쓴 양. 화면 상단 사용량 띠가 이걸 모아 더한다.
+        usage = raw.get("usage") or {}
+        run.usage = RunUsage(
+            input_tokens=int(usage.get("input_tokens") or 0),
+            output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens") or 0),
+            cache_write_tokens=int(usage.get("cache_creation_input_tokens") or 0),
+            cost_usd=float(raw.get("total_cost_usd") or 0.0),
+        )
         text = raw.get("result") or subtype or "완료"
         run._emit("result", text=_truncate(str(text)), data=raw)
         return
@@ -319,6 +339,8 @@ class RunManager:
     def __init__(self):
         self.runs: Dict[str, RunState] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
+        # 마지막으로 확인된 제한 창 상태. run 이 돌 때마다 갱신된다.
+        self.rate_limit: Optional[RateLimit] = None
 
     def create_run(self, user_id: str, agent_dir: str, agent_key: str, prompt: str,
                    project: Optional[str] = None, model: str = "", effort: str = "") -> RunState:

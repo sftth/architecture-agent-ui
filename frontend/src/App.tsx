@@ -9,6 +9,7 @@ import ProjectGate from "./components/ProjectGate";
 import AuthScreen from "./components/AuthScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import SessionDrawer from "./components/SessionDrawer";
+import UsageStrip from "./components/UsageStrip";
 import {
   AUTH_EXPIRED_EVENT,
   createRun,
@@ -18,6 +19,7 @@ import {
   getModels,
   getProjects,
   getToken,
+  getUsage,
   listRuns,
   logout,
   openRunSocket,
@@ -31,6 +33,7 @@ import {
   ProjectDef,
   RunSummary,
   StageDef,
+  UsageSummary,
   UserProfile,
 } from "./types";
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
@@ -60,6 +63,7 @@ export default function App() {
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const closeSocketRef = useRef<() => void>();
 
   const resetSession = useCallback(() => {
@@ -81,6 +85,7 @@ export default function App() {
     setEventsByRun({});
     setActiveRunId(null);
     setSessionsOpen(false);
+    setUsage(null);
   }, []);
 
   useEffect(() => {
@@ -124,6 +129,9 @@ export default function App() {
     getModels()
       .then((res) => setModels(res.models))
       .catch(() => setModels([]));
+    getUsage()
+      .then(setUsage)
+      .catch(() => setUsage(null));
     listRuns()
       .then((runs) => {
         const map: Record<string, RunSummary> = {};
@@ -143,6 +151,10 @@ export default function App() {
         [runId]: [...(prev[runId] ?? []), event],
       }));
       if (event.kind === "run_end") {
+        // 끝나야 result 의 토큰·비용이 확정된다. 그 뒤에 한 번 다시 읽는다.
+        getUsage()
+          .then(setUsage)
+          .catch(() => undefined);
         setRunsById((prev) => {
           const existing = prev[runId];
           if (!existing) return prev;
@@ -311,6 +323,7 @@ export default function App() {
       {/* 제목은 한 줄이면 된다. 큰 표제는 매번 같은 말을 하면서 화면 위쪽을 먹었다. */}
       <header className="app-header">
         <div className="app-header-mark">ARCHITECTURE&#8209;AGENT</div>
+        <UsageStrip usage={usage} />
         <div className="app-header-actions">
           <button
             className="app-path-badge app-path-badge--ok"

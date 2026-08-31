@@ -50,6 +50,7 @@
 }
 
 .app-header-mark {
+  flex: none;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);

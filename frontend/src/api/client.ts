@@ -6,6 +6,7 @@ import type {
   ProjectDef,
   RunSummary,
   StageDef,
+  UsageSummary,
   UserProfile,
 } from "../types";
 
@@ -205,6 +206,10 @@ export async function getRun(runId: string): Promise<{ summary: RunSummary; even
 
 export async function stopRun(runId: string): Promise<void> {
   await request<{ stopped: boolean }>(`/api/runs/${runId}/stop`, { method: "POST" });
+}
+
+export async function getUsage(): Promise<UsageSummary> {
+  return request<UsageSummary>("/api/usage");
 }
 
 export async function renameRun(runId: string, title: string): Promise<RunSummary> {
