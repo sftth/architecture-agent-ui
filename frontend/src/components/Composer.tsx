@@ -18,6 +18,7 @@ import "./Composer.css";
 export default function Composer({
   value,
   onChange,
+  onDropPath,
   onRun,
   onStop,
   running,
@@ -33,6 +34,8 @@ export default function Composer({
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** 입력·산출물 목록에서 파일을 끌어다 놓으면 그 경로를 받는다. */
+  onDropPath: (path: string) => void;
   onRun: () => void;
   onStop: () => void;
   running: boolean;
@@ -48,6 +51,8 @@ export default function Composer({
   onChangeModel: (model: string, effort: string) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<"agent" | "model" | null>(null);
+  // 끌어온 것이 여기 놓인다는 것을 테두리로 알린다. 놓기 전에는 알 방법이 없다.
+  const [dragOver, setDragOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
   // 입력판은 로그 위에 떠 있으므로, 로그의 마지막 줄이 그 뒤에 영영 숨지 않으려면
@@ -102,7 +107,7 @@ export default function Composer({
   const ready = Boolean(agent) && value.trim().length > 0 && !running;
 
   return (
-    <div className="composer" ref={box}>
+    <div className={`composer${dragOver ? " composer--drag" : ""}`} ref={box}>
       {openMenu === "agent" && (
         <Menu
           items={items}
@@ -147,9 +152,22 @@ export default function Composer({
             onRun();
           }
         }}
+        onDragOver={(e) => {
+          // preventDefault를 안 하면 브라우저가 기본 동작(파일 열기)을 하고 drop이 안 온다.
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const path = e.dataTransfer.getData("text/plain");
+          if (path) onDropPath(path);
+        }}
         placeholder={
           agent
-            ? `@${agent.key} — Ctrl+Enter 실행`
+            ? `@${agent.key} — Ctrl+Enter 실행 · 파일 끌어다 놓기`
             : "plan을 고르세요"
         }
         spellCheck={false}

@@ -312,13 +312,12 @@
   color: var(--line-cyan);
 }
 
-/* 지정 경로에서 온 줄은 눈에 띄게 — 이번 작업의 입력이 여기일 때가 많다. */
-.ioact--use {
-  border-color: var(--gate-mint-dim);
-  color: var(--gate-mint);
+
+/* 끌 수 있는 이름 — 손이 올라오면 끌 수 있다는 것을 커서로 알린다. */
+.iolink[draggable="true"] {
+  cursor: grab;
 }
 
-.ioact--use:hover {
-  border-color: var(--gate-mint);
-  color: var(--gate-mint);
+.iolink[draggable="true"]:active {
+  cursor: grabbing;
 }

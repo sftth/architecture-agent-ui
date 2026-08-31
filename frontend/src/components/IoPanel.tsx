@@ -47,13 +47,10 @@ export default function IoPanel({
   phase,
   project,
   activeRun,
-  onUsePath,
 }: {
   phase: PhaseId;
   project: string;
   activeRun?: RunSummary;
-  /** 파일 경로를 지시문에 넣어 준다 — 이 화면에서 고른 것이 곧 작업 입력이 되도록. */
-  onUsePath?: (path: string) => void;
 }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [preview, setPreview] = useState<FileEntry | null>(null);
@@ -138,7 +135,6 @@ export default function IoPanel({
             reloadKey={reloadKey}
             since={activeRun?.started_at}
             onOpen={setPreview}
-            onUsePath={onUsePath}
           />
           <IoTable
             kind="output"
@@ -148,7 +144,6 @@ export default function IoPanel({
             reloadKey={reloadKey}
             since={activeRun?.started_at}
             onOpen={setPreview}
-            onUsePath={onUsePath}
           />
         </div>
       )}
@@ -166,7 +161,6 @@ function IoTable({
   reloadKey,
   since,
   onOpen,
-  onUsePath,
 }: {
   kind: "input" | "output";
   title: string;
@@ -176,7 +170,6 @@ function IoTable({
   /** 이 시각 이후에 바뀐 파일은 이번 실행의 결과로 본다. */
   since?: string;
   onOpen: (entry: FileEntry) => void;
-  onUsePath?: (path: string) => void;
 }) {
   // 경로 패턴 -> 지금 들어가 있는 하위 폴더. 합친 표라도 파고든 자리는 경로마다 따로 기억한다.
   const [cursors, setCursors] = useState<Record<string, string>>({});
@@ -262,15 +255,26 @@ function IoTable({
                 return (
                   <tr key={entry.path} className={fresh ? "iorow iorow--fresh" : "iorow"}>
                     <td className="iotable-name">
+                      {/* 파일 이름은 끌어다 지시문에 놓을 수 있다. 폴더는 들어가는 자리라
+                          끌지 않는다 — 경로만 넣어 봐야 열어 볼 대상이 아니다. */}
                       <button
                         type="button"
                         className={`iolink iolink--${entry.kind}`}
+                        draggable={entry.kind !== "dir"}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", entry.path);
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
                         onClick={() =>
                           entry.kind === "dir"
                             ? setCursors((c) => ({ ...c, [io.path]: entry.path }))
                             : onOpen(entry)
                         }
-                        title={entry.path}
+                        title={
+                          entry.kind === "dir"
+                            ? entry.path
+                            : `${entry.path} — 눌러서 보기 · 끌어다 지시문에 넣기`
+                        }
                       >
                         {entry.kind === "dir" ? `${entry.name}/` : entry.name}
                       </button>
@@ -292,16 +296,6 @@ function IoTable({
                         </button>
                       ) : (
                         <>
-                          {onUsePath && (
-                            <button
-                              type="button"
-                              className="ioact ioact--use"
-                              title="이 경로를 지시문에 넣는다"
-                              onClick={() => onUsePath(entry.path)}
-                            >
-                              지시문에
-                            </button>
-                          )}
                           <button type="button" className="ioact" onClick={() => onOpen(entry)}>
                             보기
                           </button>

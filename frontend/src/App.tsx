@@ -358,11 +358,6 @@ export default function App() {
             phase={phase}
             project={project}
             activeRun={activeRun}
-            /* 화면에서 고른 파일이 곧 이번 작업의 입력이 되도록 지시문에 경로를 넣어 준다. */
-            onUsePath={(path) =>
-              setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()}
-${path}` : path))
-            }
           />
 
         </main>
@@ -377,6 +372,11 @@ ${path}` : path))
           <Composer
             value={prompt}
             onChange={setPrompt}
+            /* 입력·산출물에서 끌어온 파일이 곧 이번 작업의 입력이 되도록 경로를 붙인다. */
+            onDropPath={(path) =>
+              setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()}
+${path}` : path))
+            }
             onRun={handleRun}
             onStop={handleStop}
             running={activeRun?.status === "running"}

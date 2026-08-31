@@ -138,3 +138,15 @@
 .composer-send--stop {
   background: var(--gate-rose);
 }
+
+/* 파일을 끌어와 이 위에 있을 때. 놓으면 경로가 들어간다는 것을 테두리로 알린다 —
+   놓기 전에는 여기가 받는 자리인지 알 방법이 없다. */
+.composer--drag {
+  border-color: var(--gate-mint);
+  box-shadow: 0 0 0 3px rgba(89, 201, 165, 0.14), 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.composer--drag .composer-input::placeholder {
+  color: var(--gate-mint);
+  opacity: 1;
+}
