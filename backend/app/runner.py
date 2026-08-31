@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import store
 from .agents_catalog import find_agent
 from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
 from .models import LogEvent, RateLimit, RunSummary, RunUsage
@@ -43,6 +44,9 @@ class RunState:
                  model: str = "", effort: str = "", title: str = ""):
         self.id = run_id
         self.title = title or default_title(prompt)
+        # 디스크에서 되살린 run 은 이벤트를 아직 안 읽었다는 뜻(목록에는 필요 없다).
+        self.restored = False
+        self._log = None
         # result 이벤트가 와야 채워진다.
         self.usage: Optional[RunUsage] = None
         self.user_id = user_id
@@ -86,6 +90,14 @@ class RunState:
             usage=self.usage,
         )
 
+    def record(self) -> dict:
+        """디스크에 남길 요약. summary() 에는 없는 값(user_id·agent_dir)을 함께 싣는다 —
+        되살릴 때 누구의 것이고 어느 저장소를 향한 실행이었는지 알아야 하기 때문이다."""
+        data = self.summary().model_dump()
+        data["user_id"] = self.user_id
+        data["agent_dir"] = self.agent_dir
+        return data
+
     def _emit(self, kind: str, *, text: Optional[str] = None, data=None,
                parent_tool_use_id: Optional[str] = None):
         self._seq += 1
@@ -98,8 +110,10 @@ class RunState:
             text=text,
         )
         self.events.append(event)
+        # 화면이 들고 있는 양은 제한하되, 디스크에는 자른 것까지 전부 남긴다.
         if len(self.events) > MAX_LOG_EVENTS_PER_RUN:
             self.events.pop(0)
+        store.append_event(self._log, event)
         for queue in list(self.subscribers):
             queue.put_nowait(event)
 
@@ -108,6 +122,12 @@ class RunState:
         self.exit_code = exit_code
         self.ended_at = _now()
         self._emit("run_end", text=status, data={"exit_code": exit_code})
+        if self._log is not None:
+            try:
+                self._log.close()
+            finally:
+                self._log = None
+        store.save_meta(self.id, self.record())
         for queue in list(self.subscribers):
             queue.put_nowait(None)  # sentinel: stream closed
 
@@ -341,6 +361,39 @@ class RunManager:
         self._tasks: Dict[str, asyncio.Task] = {}
         # 마지막으로 확인된 제한 창 상태. run 이 돌 때마다 갱신된다.
         self.rate_limit: Optional[RateLimit] = None
+        self._restore()
+
+    def _restore(self) -> None:
+        """디스크에 남은 기록을 목록으로 되살린다. 로그는 실제로 열어 볼 때 읽는다."""
+        for meta in store.load_metas():
+            try:
+                run = RunState(
+                    run_id=meta["id"],
+                    user_id=meta.get("user_id", ""),
+                    agent_dir=meta.get("agent_dir", ""),
+                    stage_key=meta.get("stage_key", ""),
+                    stage_title=meta.get("stage_title", ""),
+                    agent_key=meta.get("agent_key", ""),
+                    agent_label=meta.get("agent_label", ""),
+                    prompt=meta.get("prompt", ""),
+                    full_prompt=meta.get("full_prompt", ""),
+                    project=meta.get("project"),
+                    model=meta.get("model") or "",
+                    effort=meta.get("effort") or "",
+                    title=meta.get("title", ""),
+                )
+            except KeyError:
+                continue
+            run.started_at = meta.get("started_at", run.started_at)
+            run.ended_at = meta.get("ended_at")
+            run.exit_code = meta.get("exit_code")
+            usage = meta.get("usage")
+            run.usage = RunUsage(**usage) if usage else None
+            # 프로세스는 백엔드와 함께 죽었다. "running" 으로 되살리면 영원히 도는
+            # 것처럼 보이고 중지도 안 되므로, 끊긴 것으로 표시한다.
+            run.status = "stopped" if meta.get("status") == "running" else meta.get("status", "stopped")
+            run.restored = True
+            self.runs[run.id] = run
 
     def create_run(self, user_id: str, agent_dir: str, agent_key: str, prompt: str,
                    project: Optional[str] = None, model: str = "", effort: str = "") -> RunState:
@@ -369,11 +422,22 @@ class RunManager:
             effort=effort,
         )
         self.runs[run_id] = run
+        run._log = store.open_log(run_id)
+        store.save_meta(run_id, run.record())
         self._tasks[run_id] = asyncio.create_task(_execute(run))
         return run
 
     def get_run(self, run_id: str) -> Optional[RunState]:
         return self.runs.get(run_id)
+
+    def load_events(self, run: RunState) -> None:
+        """되살린 run 의 로그를 그때 읽어 온다. 목록만 볼 때는 읽지 않는다."""
+        if not run.restored:
+            return
+        run.restored = False
+        run.events = store.load_events(run.id)
+        if run.events:
+            run._seq = run.events[-1].seq
 
     def list_runs(self, user_id: str) -> List[RunSummary]:
         return [r.summary() for r in sorted(
@@ -388,6 +452,7 @@ class RunManager:
         cleaned = (title or "").strip()
         # 빈 이름으로 지우면 목록에서 어느 줄인지 알아볼 수 없게 된다 — 원래 이름으로 되돌린다.
         run.title = (cleaned[:MAX_TITLE_CHARS] or default_title(run.prompt))
+        store.save_meta(run_id, run.record())
         return run
 
     async def delete_run(self, run_id: str) -> bool:
@@ -404,6 +469,7 @@ class RunManager:
         for queue in list(run.subscribers):
             queue.put_nowait(None)
         self.runs.pop(run_id, None)
+        store.remove(run_id)
         return True
 
     async def stop_run(self, run_id: str) -> bool:
@@ -421,6 +487,7 @@ class RunManager:
         run = self.runs.get(run_id)
         if run is None:
             return None
+        self.load_events(run)
         queue: asyncio.Queue = asyncio.Queue()
         for event in run.events:
             queue.put_nowait(event)

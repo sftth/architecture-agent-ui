@@ -53,6 +53,8 @@ async def get_run(run_id: str, user: User = Depends(current_user)):
     run = run_manager.get_run(run_id)
     if run is None or run.user_id != user.id:
         raise HTTPException(404, "run not found")
+    # 디스크에서 되살린 run 이면 이 시점에 로그를 읽어 온다.
+    run_manager.load_events(run)
     return {"summary": run.summary(), "events": run.events}
 
 

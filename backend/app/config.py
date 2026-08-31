@@ -15,6 +15,10 @@ CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "bypassPermiss
 
 MAX_LOG_EVENTS_PER_RUN = 5000
 
+# 실행 기록을 남기는 자리. 최초 커밋부터 .gitkeep 만 들고 비어 있던 디렉터리다 —
+# 저장할 자리로 잡아 두고 아무도 쓰지 않아, 백엔드가 내려가면 세션이 통째로 사라졌다.
+RUNS_DIR = Path(os.environ.get("RUNS_DIR", str(Path(__file__).resolve().parent.parent / "runs")))
+
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 # 계정(이메일/비밀번호 해시)과 계정별 환경 설정(architecture-agent 경로)을 저장하는 파일.
