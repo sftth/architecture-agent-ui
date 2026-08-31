@@ -7,7 +7,7 @@
   flex-direction: column;
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 

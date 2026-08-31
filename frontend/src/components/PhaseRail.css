@@ -1,10 +1,12 @@
+/* 레일은 뼈대다 — 바탕과 같은 면에 두고 오른쪽 실선으로만 나눈다.
+   전에는 --ink-900 이라 카드와 같은 색이었고, 그래서 3줄짜리 목록이 화면 왼쪽을
+   가득 채운 거대한 카드처럼 보였다. 길잡이는 물러나 있어야 한다. */
 .rail {
   flex: none;
-  width: 224px;
+  width: 208px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ink-900);
   border-right: 1px solid var(--line-cyan-dim);
 }
 
@@ -14,9 +16,11 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-3) var(--space-2);
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  color: var(--line-cyan);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--paper-500);
 }
 
 .rail-manage {

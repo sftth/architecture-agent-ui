@@ -10,6 +10,7 @@ import AuthScreen from "./components/AuthScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import SessionDrawer from "./components/SessionDrawer";
 import UsageStrip from "./components/UsageStrip";
+import SideResizer, { useSideWidth } from "./components/SideResizer";
 import {
   AUTH_EXPIRED_EVENT,
   createRun,
@@ -64,6 +65,7 @@ export default function App() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const side = useSideWidth();
   const closeSocketRef = useRef<() => void>();
 
   const resetSession = useCallback(() => {
@@ -375,7 +377,9 @@ export default function App() {
 
         </main>
 
-        <aside className="app-side">
+        <SideResizer onDrag={side.setWidth} onDone={side.commit} />
+
+        <aside className="app-side" style={{ width: side.width }}>
           <RunConsole
             run={activeRun}
             events={activeEvents}
