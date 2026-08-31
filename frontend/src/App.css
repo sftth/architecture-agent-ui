@@ -16,12 +16,14 @@
 .app-column {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-height: 0;
+  /* 스크롤은 이 칸이 아니라 안의 표가 가진다. 하네스는 제 높이만 쓰고 나머지는
+     입출력 표가 채운다 — 전에는 칸 전체를 스크롤 대상으로 두는 바람에 표는 짧은 채로
+     아래쪽 400px 넘는 자리가 통째로 비어 있었다. */
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 /* 오른쪽 — 로그가 이 칸을 통째로 쓰고, 입력판은 그 위에 떠 있다.

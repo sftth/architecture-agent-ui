@@ -89,6 +89,12 @@ export default function HarnessStrip({
   const rosterOf = (id: NodeId): AgentDef[] =>
     id === "common" ? (common?.agents ?? []) : stage.agents.filter((a) => roleOf(a.key) === id);
 
+  // plan 이 아래로 무언가를 부리고 있는가 — 선을 따라 점이 흐를지 결정한다.
+  const dispatching = CHILDREN.some((c) =>
+    (c.id === "common" ? (common?.agents ?? []) : stage.agents.filter((a) => roleOf(a.key) === c.id))
+      .some((a) => live.has(a.key)),
+  );
+
   /** 마디 아래에 걸 것 — 실제로 도는 것만. plan 은 겨누고 있는 대상도 함께 보인다. */
   const shownOf = (id: NodeId): AgentDef[] => {
     const roster = rosterOf(id);
@@ -125,7 +131,7 @@ export default function HarnessStrip({
         )}
       </header>
 
-      <div className="tree">
+      <div className={`tree${dispatching ? " tree--live" : ""}`}>
         <div className="tree-top">
           <TreeNode
             id="plan"
@@ -213,13 +219,18 @@ function TreeNode({
 }) {
   const running = shown.some((a) => live.has(a.key));
   return (
-    <div className={`tree-cell${beside ? " tree-cell--beside" : ""}`}>
+    <div
+      className={`tree-cell${beside ? " tree-cell--beside" : ""}${
+        running ? " tree-cell--live" : ""
+      }`}
+    >
       <button
         type="button"
         className={`tnode tnode--${id}${running ? " tnode--running" : ""}`}
         onClick={onOpen}
         title={`${label} 전체 목록 (${roster.length}개)`}
       >
+        <span className={`tnode-dot${running ? " tnode-dot--live" : ""}`} aria-hidden="true" />
         <span className="tnode-label">{label}</span>
         <span className="tnode-count">{roster.length}</span>
       </button>

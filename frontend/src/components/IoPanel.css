@@ -1,9 +1,14 @@
 .io {
+  /* 가운데 칸의 남는 높이를 이 판이 가져간다. 길어지는 것은 파일 목록이므로
+     빈자리를 두느니 표를 더 보이는 편이 낫다. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
 .io-header {
@@ -60,6 +65,9 @@
 /* Input 표 하나, Output 표 하나 — 위아래로 쌓는다. 나란히 두면 좁은 칸에서
    파일 이름이 둘 다 잘려 "이름을 읽는" 표의 일이 안 된다. */
 .io-stack {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

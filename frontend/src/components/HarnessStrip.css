@@ -4,14 +4,14 @@
    테두리와 번호에 두르고, "지금 어떤가"(진행 amber / 합격 mint / 불합격 rose)는 램프와
    테두리 덧칠로만 말한다 — 역할색과 상태색이 같은 자리를 다투지 않게. */
 .harness {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
 }
 
 .harness-empty {
@@ -91,7 +91,7 @@
 .tree-branches {
   position: relative;
   width: 100%;
-  margin-top: 30px;
+  margin-top: 26px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-3);
@@ -135,6 +135,42 @@
   border-left: 1px solid var(--line-cyan-dim);
 }
 
+/* 호출이 이 마디로 들어가는 중이면 그 줄기가 살아난다. */
+.tree-cell--live::before {
+  border-left-color: var(--signal-amber);
+}
+
+/* 그리고 점 하나가 선을 타고 마디 쪽으로 흘러 내려간다 —
+   "지금 여기로 부르고 있다"를 화살표 대신 움직임으로 말한다. */
+.tree-cell--live::after {
+  content: "";
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: var(--signal-amber);
+  animation: tree-travel 1.1s linear infinite;
+}
+
+@keyframes tree-travel {
+  0% { transform: translateY(0); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(16px); opacity: 0; }
+}
+
+/* plan 에서 버스로 내려오는 줄기도 함께 산다 — 부르는 쪽이 어디인지 보이도록. */
+.tree--live .tree-branches::after {
+  border-left-color: var(--signal-amber);
+}
+
+.tree--live .tree-branches::before {
+  border-top-color: var(--signal-amber-dim);
+}
+
 /* plan 은 마디 옆에 목록이 붙는다 — 스케치대로, 그리고 위쪽 공간을 아끼려고.
    목록을 흐름에서 빼내 절대 배치하는 이유: 함께 두면 "마디+칩" 덩어리가 가운데 정렬돼
    정작 마디가 왼쪽으로 밀리고, 아래로 내려가는 줄기가 마디가 아닌 빈 틈에서 나온다. */
@@ -150,42 +186,69 @@
   margin-left: var(--space-3);
 }
 
-/* ── 마디 ────────────────────────────────────────────── */
+/* ── 마디 ────────────────────────────────────────────────
+   선 위의 맨 원이 아니라, 색 테두리와 상태 점을 가진 사각 카드로 세운다.
+   원은 크기 말고는 말할 수 있는 것이 없어, 무엇이 도는지·어디로 부르는지를
+   담지 못했다. 카드는 이름·개수·상태를 한 자리에 들고 있다. */
 .tnode {
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 7px 16px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
   background: var(--ink-850);
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: 999px;
+  border: 1.5px solid var(--line-cyan-dim);
+  border-radius: 8px;
   color: var(--paper-100);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tnode:hover {
   background: var(--ink-800);
-  border-color: var(--paper-500);
 }
 
-.tnode--plan { border-color: var(--role-plan-dim); }
-.tnode--impl { border-color: var(--role-impl-dim); }
-.tnode--eval { border-color: var(--role-eval-dim); }
-.tnode--common { border-color: var(--line-cyan-dim); }
+.tnode--plan { border-color: var(--role-plan); }
+.tnode--impl { border-color: var(--role-impl); }
+.tnode--eval { border-color: var(--role-eval); }
+.tnode--common { border-color: var(--line-cyan); }
 
-/* 이 마디 아래에서 무언가 돌고 있다 */
+/* 마디 안의 상태 점. 평소에는 자기 역할색으로 조용히, 도는 동안은 amber 로 뛴다. */
+.tnode-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.tnode--plan .tnode-dot { color: var(--role-plan); }
+.tnode--impl .tnode-dot { color: var(--role-impl); }
+.tnode--eval .tnode-dot { color: var(--role-eval); }
+.tnode--common .tnode-dot { color: var(--line-cyan); }
+
+.tnode-dot--live {
+  color: var(--signal-amber);
+  opacity: 1;
+  animation: tnode-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tnode-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 166, 90, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0); }
+}
+
+/* 이 마디로 호출이 들어와 있다 */
 .tnode--running {
   border-color: var(--signal-amber);
-  animation: tnode-breathe 1.9s ease-in-out infinite;
+  background: rgba(242, 166, 90, 0.08);
 }
 
-@keyframes tnode-breathe {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(242, 166, 90, 0.08); }
-  50% { box-shadow: 0 0 0 4px rgba(242, 166, 90, 0.16); }
+.tnode-label {
+  letter-spacing: 0.02em;
 }
 
 .tnode-count {
