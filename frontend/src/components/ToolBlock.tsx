@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import "./ToolBlock.css";
 
 /** 평소에 보여 줄 줄 수. 넘치면 잘라 두고 "전체 보기"로 연다. */
@@ -30,7 +30,7 @@ function clip(text: string, limit: number): { shown: string; more: boolean } {
  * 짝을 눈으로 다시 맞춰야 했다. 여기서는 그 둘을 한 상자에 묶는다.
  * 긴 것은 잘라 두되 잘렸다는 사실을 감추지 않고, 손을 올리면 복사와 전체 보기가 나온다.
  */
-export default function ToolBlock({ tool }: { tool: ToolCall }) {
+function ToolBlock({ tool }: { tool: ToolCall }) {
   const [open, setOpen] = useState(false);
 
   const inPart = tool.input ? clip(tool.input, IN_LINES) : null;
@@ -189,3 +189,22 @@ function CloseIcon() {
     </svg>
   );
 }
+
+/**
+ * 값이 같으면 다시 그리지 않는다.
+ *
+ * 참조로만 비교할 수는 없다 — 이벤트가 하나 올 때마다 toBlocks 가 덩어리를 새로 만들어서
+ * 내용이 그대로여도 tool 객체는 매번 다른 것이 온다. 그래서 실제로 읽는 값만 견준다.
+ */
+export default memo(ToolBlock, (a, b) => {
+  const x = a.tool;
+  const y = b.tool;
+  return (
+    x.id === y.id &&
+    x.name === y.name &&
+    x.input === y.input &&
+    x.output === y.output &&
+    x.note === y.note &&
+    x.failed === y.failed
+  );
+});

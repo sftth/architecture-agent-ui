@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { LogEvent, RunSummary } from "../types";
 import { toBlocks } from "../transcript";
 import Markdown from "./Markdown";
 import ToolBlock from "./ToolBlock";
 import "./RunConsole.css";
 
-export default function RunConsole({
+function RunConsole({
   run,
   events,
   onOpenSessions,
@@ -17,6 +17,7 @@ export default function RunConsole({
   onNewSession: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const flowRef = useRef<HTMLDivElement>(null);
   // 사용자가 위쪽 로그를 읽고 있을 때 새 이벤트가 강제로 맨 아래로 끌어내리지 않게 한다.
   const stickToBottom = useRef(true);
 
@@ -34,18 +35,23 @@ export default function RunConsole({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  });
+  }, [blocks]);
 
   // 렌더가 끝난 뒤 늦게 커지는 것(긴 표, 접힌 블록)까지 따라가려면 크기를 지켜봐야 한다.
+  //
+  // 전에는 자식 하나하나를 관찰했고, 덩어리 수가 바뀔 때마다 그 전부를 끊고 다시 걸었다.
+  // 이벤트가 한 줄 올 때마다 관찰 수백 개를 재설치한 셈이다. 글 전체를 감싼 한 겹만
+  // 보면 되고 — 그 높이가 곧 내용의 높이다 — 그러면 run 당 한 번으로 끝난다.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    const flow = flowRef.current;
+    if (!el || !flow) return;
     const observer = new ResizeObserver(() => {
       if (stickToBottom.current) el.scrollTop = el.scrollHeight;
     });
-    for (const child of Array.from(el.children)) observer.observe(child);
+    observer.observe(flow);
     return () => observer.disconnect();
-  }, [blocks.length]);
+  }, [run?.id]);
 
   // run을 바꾸면 다시 실시간 추적으로 되돌린다.
   useEffect(() => {
@@ -134,6 +140,7 @@ export default function RunConsole({
             <div className="ask-bubble">{run.prompt}</div>
           </div>
         )}
+        <div ref={flowRef}>
         {blocks.map((block) => {
           if (block.kind === "tool") return <ToolBlock key={block.key} tool={block.tool} />;
           if (block.kind === "md") {
@@ -151,6 +158,7 @@ export default function RunConsole({
           );
         })}
         {blocks.length === 0 && <div className="console-line line--system">연결 중</div>}
+        </div>
       </div>
     </div>
   );
@@ -199,3 +207,11 @@ function PlusIcon() {
     </svg>
   );
 }
+
+/**
+ * 로그가 그대로면 다시 그리지 않는다.
+ *
+ * 이 판은 지시문 입력판과 같은 App 아래에 있어, 한 글자 칠 때마다 함께 다시 그려졌다.
+ * 로그 1200줄에서 키 한 번에 1초 가까이 걸리던 원인이다. 입력은 로그를 바꾸지 않는다.
+ */
+export default memo(RunConsole);

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ReactNode } from "react";
 import "./Markdown.css";
 
@@ -9,9 +10,18 @@ import "./Markdown.css";
  * 아니라 React 노드로 만들어 에이전트가 뱉은 글이 그대로 마크업이 되는 길을 막는 것이다.
  * 로그에 실려 오는 것은 전부 신뢰할 수 없는 텍스트라, dangerouslySetInnerHTML은 쓰지 않는다.
  */
-export default function Markdown({ text }: { text: string }) {
+/**
+ * 글이 그대로면 다시 파싱하지 않는다.
+ *
+ * 이 컴포넌트는 그릴 때마다 본문 전체를 다시 훑는다. 그런데 로그는 한 번 그려지면
+ * 좀처럼 바뀌지 않는 반면, 부모(콘솔)는 지시문을 한 글자 칠 때마다 다시 그려진다.
+ * 그 사이에 아무 상관 없는 옛 로그 수백 덩어리가 통째로 다시 파싱되고 있었다.
+ */
+function Markdown({ text }: { text: string }) {
   return <div className="md">{render(text)}</div>;
 }
+
+export default memo(Markdown);
 
 const BLOCK_START = /^\s*(```|#{1,6}\s|>|[-*+]\s|\d+\.\s|\||---)/;
 

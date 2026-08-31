@@ -42,6 +42,9 @@ import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } f
 import { activeSubAgents, planOf } from "./harness";
 import "./App.css";
 
+/** run 이 없을 때 넘길 빈 목록. 매번 새로 만들면 콘솔의 memo 가 깨진다. */
+const EMPTY_EVENTS: LogEvent[] = [];
+
 export default function App() {
   // undefined: 세션 확인 중 / null: 로그아웃 상태
   const [user, setUser] = useState<UserProfile | null | undefined>(undefined);
@@ -71,6 +74,23 @@ export default function App() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const side = useSideWidth();
   const closeSocketRef = useRef<() => void>();
+  // 소켓에서 온 이벤트를 한 프레임 동안 모아 두는 자리.
+  const pendingRef = useRef<LogEvent[]>([]);
+  const frameRef = useRef<number | null>(null);
+
+  /** 모아 둔 것을 지금 흘려보낸다. runId 를 주면 그 run 에 넣고, 없으면 버린다. */
+  const flushPending = useCallback((runId?: string) => {
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    const batch = pendingRef.current;
+    pendingRef.current = [];
+    if (!runId || batch.length === 0) return;
+    setEventsByRun((prev) => ({ ...prev, [runId]: [...(prev[runId] ?? []), ...batch] }));
+  }, []);
+
+  const openSessions = useCallback(() => setSessionsOpen(true), []);
 
   const resetSession = useCallback(() => {
     closeSocketRef.current?.();
@@ -149,14 +169,28 @@ export default function App() {
 
   function connect(runId: string) {
     closeSocketRef.current?.();
+    flushPending();
     setEventsByRun((prev) => ({ ...prev, [runId]: [] }));
     const close = openRunSocket(runId, (event) => {
       if (event === null) return;
-      setEventsByRun((prev) => ({
-        ...prev,
-        [runId]: [...(prev[runId] ?? []), event],
-      }));
+      // 이벤트 하나에 렌더 한 번씩 하면 스트림이 몰릴 때 화면이 따라오지 못한다.
+      // 한 프레임 동안 온 것을 모아 한 번에 넣는다.
+      pendingRef.current.push(event);
+      if (frameRef.current === null) {
+        frameRef.current = requestAnimationFrame(() => {
+          frameRef.current = null;
+          const batch = pendingRef.current;
+          if (batch.length === 0) return;
+          pendingRef.current = [];
+          setEventsByRun((prev) => ({
+            ...prev,
+            [runId]: [...(prev[runId] ?? []), ...batch],
+          }));
+        });
+      }
       if (event.kind === "run_end") {
+        // 마지막 몇 줄이 프레임 사이에 걸려 있을 수 있다 — 상태를 바꾸기 전에 비운다.
+        flushPending(runId);
         // 끝나야 result 의 토큰·비용이 확정된다. 그 뒤에 한 번 다시 읽는다.
         getUsage()
           .then(setUsage)
@@ -225,13 +259,14 @@ export default function App() {
   }
 
   /** 새 세션 = 빈 컨텍스트. 실제 세션은 지시문을 보내는 순간 서버에서 생긴다. */
-  function handleNewSession() {
+  // 참조가 매 렌더 바뀌면 콘솔이 그때마다 다시 그려진다. 안이 전부 setter·ref 라 빈 deps 로 족하다.
+  const handleNewSession = useCallback(() => {
     closeSocketRef.current?.();
     closeSocketRef.current = undefined;
     setActiveRunId(null);
     setPrompt("");
     setSessionsOpen(false);
-  }
+  }, []);
 
   async function handleRenameSession(id: string, title: string) {
     // 서버가 빈 이름을 원래 이름으로 되돌리므로, 결과를 그대로 받아 반영한다.
@@ -272,11 +307,21 @@ export default function App() {
     }
   }
 
-  useEffect(() => () => closeSocketRef.current?.(), []);
+  useEffect(
+    () => () => {
+      closeSocketRef.current?.();
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
 
   const runs = useMemo(() => Object.values(runsById), [runsById]);
   const activeRun = activeRunId ? runsById[activeRunId] : undefined;
-  const activeEvents = activeRunId ? eventsByRun[activeRunId] ?? [] : [];
+  // 새 배열을 만들면 콘솔의 memo 가 매번 깨진다 — run 이 없을 때도 같은 빈 배열을 쓴다.
+  const activeEvents = useMemo(
+    () => (activeRunId ? eventsByRun[activeRunId] ?? EMPTY_EVENTS : EMPTY_EVENTS),
+    [activeRunId, eventsByRun],
+  );
   const visibleStages = useMemo(() => stagesForPhase(stages, phase), [stages, phase]);
   // 어느 단계에서 보든 함께 딸려 오는 공통 유틸리티.
   const common = useMemo(() => commonStage(stages), [stages]);
@@ -433,7 +478,7 @@ export default function App() {
           <RunConsole
             run={activeRun}
             events={activeEvents}
-            onOpenSessions={() => setSessionsOpen(true)}
+            onOpenSessions={openSessions}
             onNewSession={handleNewSession}
           />
           <Composer
