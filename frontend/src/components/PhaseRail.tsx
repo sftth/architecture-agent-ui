@@ -24,6 +24,7 @@ function latestStatus(runs: RunSummary[], stageKeys: string[]): RunStatus | "idl
 export default function PhaseRail({
   runs,
   activePhase,
+  livePhase,
   onSelectPhase,
   project,
   projects,
@@ -32,6 +33,8 @@ export default function PhaseRail({
 }: {
   runs: RunSummary[];
   activePhase: PhaseId;
+  /** 지금 sub-agent 가 돌고 있는 단계. 화면이 다른 데 있어도 여기서 먼저 보인다. */
+  livePhase?: PhaseId | null;
   onSelectPhase: (phase: PhaseId) => void;
   project: string;
   projects: ProjectDef[];
@@ -87,18 +90,24 @@ export default function PhaseRail({
         {PHASES.map((phase) => {
           const status = latestStatus(runs, phase.stageKeys);
           const active = phase.id === activePhase;
+          const live = phase.id === livePhase;
           return (
             <li key={phase.id}>
               <button
                 type="button"
-                className={`rail-item rail-item--${status}${active ? " rail-item--on" : ""}`}
+                className={`rail-item rail-item--${status}${active ? " rail-item--on" : ""}${
+                  live ? " rail-item--live" : ""
+                }`}
                 aria-current={active ? "page" : undefined}
-                title={phase.caption}
+                title={live ? `${phase.caption} · 실행 중` : phase.caption}
                 onClick={() => onSelectPhase(phase.id)}
               >
                 <PhaseIcon id={phase.id} />
                 <span className="rail-name">{phase.title}</span>
-                <span className={`rail-lamp rail-lamp--${status}`} aria-hidden="true" />
+                <span
+                  className={`rail-lamp rail-lamp--${live ? "live" : status}`}
+                  aria-hidden="true"
+                />
               </button>
             </li>
           );

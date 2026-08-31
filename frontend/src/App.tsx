@@ -64,6 +64,9 @@ export default function App() {
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  // 도는 sub-agent 를 화면이 따라간다. 사람이 직접 옮기면 그 run 동안은 멈춘다.
+  const [follow, setFollow] = useState(true);
+  const [focusStage, setFocusStage] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const side = useSideWidth();
@@ -193,8 +196,15 @@ export default function App() {
     connect(run.id);
   }
 
+  /** 사람이 직접 화면을 옮겼다 — 보려던 자리를 도는 run 이 도로 뺏어가지 않게 한다. */
+  function stopFollow() {
+    setFollow(false);
+    setFocusStage(null);
+  }
+
   /** 카탈로그 어디에 있는 agent든 고를 수 있다. 다른 단계 것이면 그 단계로 함께 넘어간다. */
   function handleSelectAgent(key: string) {
+    stopFollow();
     setAgentKey(key);
     const stage = stages.find((s) => s.agents.some((a) => a.key === key));
     // 공통 유틸리티는 소속이 없다(null) — 보던 단계를 그대로 두고 대상만 바꾼다.
@@ -277,19 +287,6 @@ export default function App() {
   );
   const agent: AgentDef | undefined = agentStage?.agents.find((a) => a.key === agentKey);
 
-  // 단계를 옮기면 그 단계 첫 스테이지의 plan을 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
-  // 카탈로그가 아직 없거나 이 단계에 sub-agent가 없으면 비워 둔다(칩에 "대상 없음"으로 보인다).
-  useEffect(() => {
-    // 이 단계 것을 골랐거나, 어느 단계에서나 쓰는 공통 유틸리티를 골랐으면 그대로 둔다.
-    const held =
-      agentStage &&
-      (agentStage.key === COMMON_STAGE || phaseIdForStage(agentStage.key) === phase);
-    if (agentKey && held) return;
-    const head = visibleStages[0];
-    const first = head && (planOf(head) ?? head.agents[0])?.key;
-    if (first) setAgentKey(first);
-  }, [phase, agentKey, agentStage, visibleStages]);
-
   // plan 하나가 도는 동안 impl·eval은 같은 프로세스 안에서 불려 나가 run 기록이 남지
   // 않는다. 지금 누가 일하고 있는지는 로그에서 읽어내 하네스에 넘긴다.
   const allAgentKeys = useMemo(
@@ -300,6 +297,49 @@ export default function App() {
     () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
+
+  // 도는 sub-agent 가 어느 스테이지 소속인지 — 화면을 그리로 옮기기 위한 좌표다.
+  const liveStage = useMemo(() => {
+    const key = activeAgents[0];
+    if (!key) return null;
+    return stages.find((s) => s.agents.some((a) => a.key === key)) ?? null;
+  }, [activeAgents, stages]);
+  const livePhase = liveStage ? phaseIdForStage(liveStage.key) : null;
+
+  // 하네스는 고른 sub-agent 를 따라 보여 준다. 그런데 plan 이 다른 스테이지의 impl 을
+  // 부르면 그 sub-agent 는 다른 단계 화면에 있고, 사람이 직접 넘어가야 비로소 보였다.
+  // 지금 도는 곳으로 화면이 먼저 움직인다.
+  useEffect(() => {
+    if (!follow || !liveStage) return;
+    // 공통 유틸리티는 어느 단계에서든 Comm 줄에 이미 서 있다 — 화면을 옮길 이유가 없다.
+    if (liveStage.key === COMMON_STAGE) return;
+    setFocusStage(liveStage.key);
+    if (livePhase) setPhase(livePhase);
+  }, [follow, liveStage, livePhase]);
+
+  // run 이 바뀌면 다시 따라간다 — 앞 run 에서 멈춰 둔 것을 다음 run 까지 끌고 가지 않는다.
+  useEffect(() => {
+    setFollow(true);
+    setFocusStage(null);
+  }, [activeRunId]);
+
+
+  // 단계를 옮기면 그 단계 첫 스테이지의 plan을 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
+  // 카탈로그가 아직 없거나 이 단계에 sub-agent가 없으면 비워 둔다(칩에 "대상 없음"으로 보인다).
+  useEffect(() => {
+    // 따라가는 중의 단계 이동은 화면만 옮긴 것이다 — 사람이 겨눠 둔 대상까지 바꾸지
+    // 않는다. 쓰던 지시문이 엉뚱한 plan 으로 날아가면 안 된다.
+    if (follow && liveStage) return;
+    // 이 단계 것을 골랐거나, 어느 단계에서나 쓰는 공통 유틸리티를 골랐으면 그대로 둔다.
+    const held =
+      agentStage &&
+      (agentStage.key === COMMON_STAGE || phaseIdForStage(agentStage.key) === phase);
+    if (agentKey && held) return;
+    const head = visibleStages[0];
+    const first = head && (planOf(head) ?? head.agents[0])?.key;
+    if (first) setAgentKey(first);
+  }, [phase, agentKey, agentStage, visibleStages, follow, liveStage]);
+
 
   if (user === undefined) {
     return <div className="app-loading">불러오는 중...</div>;
@@ -349,7 +389,11 @@ export default function App() {
         <PhaseRail
           runs={runs}
           activePhase={phase}
-          onSelectPhase={setPhase}
+          livePhase={livePhase}
+          onSelectPhase={(next) => {
+            stopFollow();
+            setPhase(next);
+          }}
           project={project}
           projects={projects}
           onSelectProject={setProject}
@@ -364,7 +408,11 @@ export default function App() {
             activeAgents={activeAgents}
             common={common}
             selectedAgent={agentKey}
-            onSelectAgent={setAgentKey}
+            onSelectAgent={handleSelectAgent}
+            focusStage={focusStage}
+            following={follow}
+            liveStage={liveStage}
+            onFollow={() => setFollow(true)}
           />
 
           {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를

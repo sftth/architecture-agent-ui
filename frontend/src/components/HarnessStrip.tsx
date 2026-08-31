@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AgentDef, RunSummary, StageDef } from "../types";
+import { useEffect, useState } from "react";
+import { AgentDef, StageDef } from "../types";
 import { Role, commandableAgents, planOf, roleOf } from "../harness";
 import "./HarnessStrip.css";
 
@@ -40,38 +40,40 @@ const LOOP_DEFAULT = "합격할 때까지 되돌아간다";
 export default function HarnessStrip({
   stages,
   loaded,
-  runs,
   selectedAgent,
   onSelectAgent,
   activeAgents,
   common,
+  focusStage,
+  following,
+  liveStage,
+  onFollow,
 }: {
   stages: StageDef[];
   /** 카탈로그가 실제로 도착했는가. 오기 전의 빈 목록을 "없음"이라 말하지 않기 위해. */
   loaded: boolean;
-  runs: RunSummary[];
   selectedAgent: string;
   onSelectAgent: (agentKey: string) => void;
   /** 지금 도는 run 의 로그에서 읽어낸, 실제로 일하고 있는 sub-agent 들. */
   activeAgents: string[];
   /** 어느 단계에서든 plan 이 불러 쓰는 공통 유틸리티(있을 때만). */
   common?: StageDef;
+  /** 도는 sub-agent 를 따라 화면이 옮겨 온 스테이지. 없으면 고른 sub-agent 를 따른다. */
+  focusStage?: string | null;
+  /** 화면이 지금 run 을 따라가는 중인가. */
+  following: boolean;
+  /** 지금 sub-agent 가 돌고 있는 스테이지(있을 때만). */
+  liveStage?: StageDef | null;
+  /** 손으로 옮겨 둔 화면을 다시 run 쪽으로 붙인다. */
+  onFollow: () => void;
 }) {
   const [open, setOpen] = useState<NodeId | null>(null);
 
   const stage =
+    (focusStage ? stages.find((s) => s.key === focusStage) : undefined) ??
     stages.find((s) => s.agents.some((a) => a.key === selectedAgent)) ??
     (common?.agents.some((a) => a.key === selectedAgent) ? stages[0] : undefined) ??
     stages[0];
-
-  const latestByAgent = useMemo(() => {
-    const map: Record<string, RunSummary> = {};
-    for (const run of runs) {
-      const prev = map[run.agent_key];
-      if (!prev || prev.started_at < run.started_at) map[run.agent_key] = run;
-    }
-    return map;
-  }, [runs]);
 
   if (!stage) {
     return (
@@ -89,27 +91,20 @@ export default function HarnessStrip({
   const rosterOf = (id: NodeId): AgentDef[] =>
     id === "common" ? (common?.agents ?? []) : stage.agents.filter((a) => roleOf(a.key) === id);
 
-  // plan 이 아래로 무언가를 부리고 있는가 — 선을 따라 점이 흐를지 결정한다.
-  const dispatching = CHILDREN.some((c) =>
-    (c.id === "common" ? (common?.agents ?? []) : stage.agents.filter((a) => roleOf(a.key) === c.id))
-      .some((a) => live.has(a.key)),
-  );
-
-  /** 마디 아래에 걸 것 — 실제로 도는 것만. plan 은 겨누고 있는 대상도 함께 보인다. */
-  const shownOf = (id: NodeId): AgentDef[] => {
-    const roster = rosterOf(id);
-    const running = roster.filter(
-      (a) => live.has(a.key) || latestByAgent[a.key]?.status === "running",
-    );
-    if (id !== "plan") return running;
-    const aimed = roster.filter((a) => a.key === selectedAgent && !running.includes(a));
-    return [...running, ...aimed];
-  };
-
   return (
     <section className="harness" aria-label={`${stage.title} 하네스`}>
       <header className="harness-head">
-        <h3 className="harness-stage-name">{stage.title}</h3>
+        <span className="harness-number" aria-hidden="true">01</span>
+        <div className="harness-heading">
+          <span className="harness-eyebrow">AGENT HARNESS</span>
+          <h3 className="harness-stage-name">{stage.title}</h3>
+        </div>
+        <FollowChip
+          following={following}
+          liveStage={liveStage}
+          shownStage={stage.key}
+          onFollow={onFollow}
+        />
         {stages.length > 1 && (
           <div className="harness-tabs" role="tablist" aria-label="스테이지">
             {stages.map((s) => (
@@ -131,40 +126,15 @@ export default function HarnessStrip({
         )}
       </header>
 
-      <div className={`tree${dispatching ? " tree--live" : ""}`}>
-        <div className="tree-top">
-          <TreeNode
-            id="plan"
-            label="Plan"
-            roster={rosterOf("plan")}
-            shown={shownOf("plan")}
-            live={live}
-            commandable={commandable}
-            onOpen={() => setOpen("plan")}
-            onSelectAgent={onSelectAgent}
-            selectedAgent={selectedAgent}
-            beside
-          />
-        </div>
-
-        {/* plan 에서 내려와 셋으로 갈라지는 선. 관계가 곧 그림이다. */}
-        <div className="tree-branches">
-          {CHILDREN.map((child) => (
-            <TreeNode
-              key={child.id}
-              id={child.id}
-              label={child.label}
-              roster={rosterOf(child.id)}
-              shown={shownOf(child.id)}
-              live={live}
-              commandable={commandable}
-              onOpen={() => setOpen(child.id)}
-              onSelectAgent={onSelectAgent}
-              selectedAgent={selectedAgent}
-            />
-          ))}
-        </div>
-      </div>
+      <AgentBoard
+        stage={stage}
+        common={common}
+        live={live}
+        commandable={commandable}
+        selectedAgent={selectedAgent}
+        onSelectAgent={onSelectAgent}
+        onOpen={setOpen}
+      />
 
       {open && (
         <Roster
@@ -193,87 +163,83 @@ export default function HarnessStrip({
   );
 }
 
-function TreeNode({
-  id,
-  label,
-  roster,
-  shown,
-  live,
-  commandable,
-  onOpen,
-  onSelectAgent,
-  selectedAgent,
-  beside,
+/**
+ * 화면이 run 을 따라가고 있다는 표시, 그리고 손으로 옮겨 둔 뒤 다시 붙는 길.
+ *
+ * 따라가기는 조용히 해야 한다 — 화면이 저 혼자 움직이는데 아무 말이 없으면 사람은
+ * 자기가 잘못 눌렀다고 생각한다. 반대로 손으로 다른 곳을 보는 중이라면 도로 끌고 오는
+ * 대신 "저기서 돌고 있다"고만 알리고 돌아갈지는 사람이 정한다.
+ */
+function FollowChip({
+  following,
+  liveStage,
+  shownStage,
+  onFollow,
 }: {
-  id: NodeId;
-  label: string;
-  roster: AgentDef[];
-  shown: AgentDef[];
+  following: boolean;
+  liveStage?: StageDef | null;
+  shownStage: string;
+  onFollow: () => void;
+}) {
+  if (!liveStage) return null;
+
+  // 이미 그 스테이지를 보고 있으면 굳이 말하지 않는다 — 도는 줄에 working 이 켜져 있다.
+  if (liveStage.key === shownStage) {
+    return following ? <span className="harness-follow">실행 따라가는 중</span> : null;
+  }
+
+  return (
+    <button type="button" className="harness-follow harness-follow--go" onClick={onFollow}>
+      <span className="harness-follow-dot" aria-hidden="true" />
+      {liveStage.title}에서 실행 중
+    </button>
+  );
+}
+
+function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectAgent, onOpen }: {
+  stage: StageDef;
+  common?: StageDef;
   live: Set<string>;
   commandable: Set<string>;
-  onOpen: () => void;
-  onSelectAgent: (key: string) => void;
   selectedAgent: string;
-  /** plan 은 목록이 마디 옆에 붙는다(스케치대로). 나머지는 아래로 쌓인다. */
-  beside?: boolean;
+  onSelectAgent: (key: string) => void;
+  onOpen: (id: NodeId) => void;
 }) {
-  const running = shown.some((a) => live.has(a.key));
-  return (
-    <div
-      className={`tree-cell${beside ? " tree-cell--beside" : ""}${
-        running ? " tree-cell--live" : ""
-      }`}
-    >
-      <button
-        type="button"
-        className={`tnode tnode--${id}${running ? " tnode--running" : ""}`}
-        onClick={onOpen}
-        title={`${label} 전체 목록 (${roster.length}개)`}
-      >
-        <span className={`tnode-dot${running ? " tnode-dot--live" : ""}`} aria-hidden="true" />
-        <span className="tnode-label">{label}</span>
-        <span className="tnode-count">{roster.length}</span>
-      </button>
+  const groups: { id: NodeId; label: string; agents: AgentDef[] }[] = [
+    { id: "plan", label: "Plan/", agents: stage.agents.filter((a) => roleOf(a.key) === "plan") },
+    { id: "impl", label: "Impl/", agents: stage.agents.filter((a) => roleOf(a.key) === "impl") },
+    { id: "eval", label: "Eval/", agents: stage.agents.filter((a) => roleOf(a.key) === "eval") },
+    { id: "common", label: "Comm/", agents: common?.agents ?? [] },
+  ];
 
-      <ul className={`tlist${beside ? " tlist--beside" : ""}`}>
-        {shown.length === 0 ? (
-          <li className="tlist-none">—</li>
-        ) : (
-          shown.map((agent) => {
-            const now = live.has(agent.key);
-            const pick = commandable.has(agent.key);
-            const cls = `tchip${now ? " tchip--running" : ""}${
-              agent.key === selectedAgent ? " tchip--on" : ""
-            }`;
-            const body = (
-              <>
-                {now && <span className="tchip-live" aria-hidden="true" />}
-                <span className="tchip-key">{agent.key}</span>
-              </>
-            );
-            return (
-              <li key={agent.key}>
-                {pick ? (
-                  <button
-                    type="button"
-                    className={cls}
-                    title={agent.role}
-                    onClick={() => onSelectAgent(agent.key)}
-                  >
-                    {body}
-                  </button>
-                ) : (
-                  <span className={`${cls} tchip--static`} title={agent.role}>
-                    {body}
-                  </span>
-                )}
-              </li>
-            );
-          })
-        )}
-      </ul>
+  return (
+    <div className="agent-board">
+      {groups.map((group) => (
+        <section className={`agent-lane agent-lane--${group.id}`} key={group.id}>
+          <button type="button" className="agent-lane-title" onClick={() => onOpen(group.id)}>
+            {group.label}<span>{group.agents.length}</span>
+          </button>
+          <div className="agent-lane-list">
+            {group.agents.length === 0 && <span className="agent-lane-empty">—</span>}
+            {group.agents.map((agent) => {
+              const running = live.has(agent.key);
+              const selected = selectedAgent === agent.key;
+              const body = <><AgentGlyph /><span>{agent.key}</span>{running && <em>working</em>}</>;
+              return commandable.has(agent.key) ? (
+                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role} onClick={() => onSelectAgent(agent.key)}>{body}</button>
+              ) : (
+                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role}>{body}</span>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
+}
+
+function AgentGlyph() {
+  return <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.2" y="4.4" width="11.6" height="8.2" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" /><path d="M5.2 8h.01M8 8h.01M10.8 8h.01M5.5 10.4h5M8 2v2.4" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /><circle cx="8" cy="2" r=".7" fill="currentColor" /></svg>;
 }
 
 /** 마디를 누르면 뜨는 전체 목록. 평소 화면에는 도는 것만 두기 위한 뒷문이다. */

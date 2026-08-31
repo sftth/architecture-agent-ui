@@ -146,3 +146,21 @@
   50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0.25); }
 }
 
+
+/* 도는 단계 — 마지막 run 의 결과색보다 "지금 살아 있다"가 먼저다.
+   화면이 다른 단계에 머물러 있어도 어디서 도는지는 여기서 먼저 보인다. */
+.rail-lamp--live {
+  background: var(--line-cyan);
+  animation: rail-live 1.4s ease-in-out infinite;
+}
+
+@keyframes rail-live {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(90, 200, 214, 0.18); }
+  50% { box-shadow: 0 0 0 5px rgba(90, 200, 214, 0.3); }
+}
+
+/* 고르지 않은 단계에서 돌고 있으면 이름만이라도 살려 둔다 — 꺼진 글자 옆의 점 하나는
+   눈에 안 들어온다. */
+.rail-item--live:not(.rail-item--on) .rail-name {
+  color: var(--paper-100);
+}
