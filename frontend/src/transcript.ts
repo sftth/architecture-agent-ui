@@ -7,6 +7,25 @@ export type Block =
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "meta"; key: string; label: string; text: string; cls: string };
 
+/**
+ * 읽을 것이 없어 기본으로 감추는 종류.
+ *
+ * system 은 대부분 "세션 시작 (subtype=thinking_tokens)" 같은 CLI 내부 알림이라, 줄 수로는
+ * 로그의 절반이면서 알려 주는 것은 없다. run_end 는 콘솔 머리가 이미 최종 상태를 말한다.
+ * 다만 통째로 버리지는 않는다 — CLI 가 이것 말고 아무것도 못 냈을 때 화면이 빈 채로
+ * 남으면 무슨 일이 있었는지 알아낼 길이 사라진다(전에 "연결 중"에 갇혔던 그 상황).
+ * 그래서 감추되 개수를 세어 두고, 콘솔 머리에서 다시 펼 수 있게 한다.
+ * stderr 는 여기 없다 — 오류는 언제나 보인다.
+ */
+export function isNoise(kind: string): boolean {
+  return kind === "system" || kind === "run_end";
+}
+
+/** 지금 감춰져 있는 줄 수. 0이면 펼치기 손잡이 자체를 두지 않는다. */
+export function noiseCount(events: LogEvent[]): number {
+  return events.reduce((n, e) => (isNoise(e.kind) ? n + 1 : n), 0);
+}
+
 const META: Record<string, { label: string; cls: string }> = {
   system: { label: "SYS", cls: "line--system" },
   hook: { label: "HOOK", cls: "line--hook" },
@@ -60,12 +79,13 @@ function noteOf(data: unknown): string | null {
  * 무엇이 돌아왔는지 눈으로 다시 짝지어야 했다. 여기서 id로 미리 짝을 맞춰 한 덩어리로
  * 넘기고, 에이전트가 쓴 글은 마크다운 그대로 그린다.
  */
-export function toBlocks(events: LogEvent[]): Block[] {
+export function toBlocks(events: LogEvent[], showNoise = false): Block[] {
   const blocks: Block[] = [];
   const byToolId = new Map<string, ToolCall>();
 
   for (const event of events) {
     const key = String(event.seq);
+    if (!showNoise && isNoise(event.kind)) continue;
 
     if (event.kind === "tool_use") {
       const id = idOf(event.data, "id") ?? key;

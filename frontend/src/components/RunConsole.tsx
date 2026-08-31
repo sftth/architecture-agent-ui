@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LogEvent, RunSummary } from "../types";
-import { toBlocks } from "../transcript";
+import { noiseCount, toBlocks } from "../transcript";
 import Markdown from "./Markdown";
 import ToolBlock from "./ToolBlock";
 import "./RunConsole.css";
@@ -16,6 +16,8 @@ export default function RunConsole({
   onOpenSessions: () => void;
   onNewSession: () => void;
 }) {
+  // CLI 내부 알림은 기본으로 감춘다. 감춘 것이 있을 때만 머리에 펼치기 손잡이가 뜬다.
+  const [showNoise, setShowNoise] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 사용자가 위쪽 로그를 읽고 있을 때 새 이벤트가 강제로 맨 아래로 끌어내리지 않게 한다.
   const stickToBottom = useRef(true);
@@ -27,7 +29,8 @@ export default function RunConsole({
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
-  const blocks = useMemo(() => toBlocks(events), [events]);
+  const blocks = useMemo(() => toBlocks(events, showNoise), [events, showNoise]);
+  const hidden = useMemo(() => noiseCount(events), [events]);
 
   // 이벤트 수가 아니라 "그려진 뒤"를 기준으로 붙인다. 마크다운·표·도구 상자는 같은
   // 이벤트 수에서도 높이가 나중에 커져, events.length만 보면 마지막 줄을 놓친다.
@@ -124,10 +127,26 @@ export default function RunConsole({
             {run.exit_code !== null && run.exit_code !== undefined ? ` (exit ${run.exit_code})` : ""}
           </span>
         )}
+        {hidden > 0 && (
+          <button
+            type="button"
+            className={`console-noise${showNoise ? " console-noise--on" : ""}`}
+            onClick={() => setShowNoise((v) => !v)}
+            title="세션 시작·rate limit 같은 CLI 내부 알림"
+          >
+            시스템 {hidden}
+          </button>
+        )}
         {head}
       </header>
 
       <div className="console-body" ref={scrollRef} onScroll={handleScroll}>
+        {/* 무엇을 시켰는지가 로그 맨 위에 있어야 한다 — 머리의 제목은 이름일 뿐이다. */}
+        {run.prompt && (
+          <div className="ask">
+            <div className="ask-bubble">{run.prompt}</div>
+          </div>
+        )}
         {blocks.map((block) => {
           if (block.kind === "tool") return <ToolBlock key={block.key} tool={block.tool} />;
           if (block.kind === "md") {
