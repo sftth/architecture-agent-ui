@@ -23,7 +23,11 @@ export type Block =
  * 반드시 화면에 남는다. 그래서 "감춘 것 펼치기" 같은 뒷문을 두지 않는다.
  */
 function isNoise(kind: string): boolean {
-  return kind === "system" || kind === "run_end";
+  // raw 는 CLI 가 낸 줄을 우리가 해석하지 못했을 때의 원문이다. Bash 호출 주변에서
+  // 특히 자주 나오는데, 이미 tool_use/tool_result 로 읽을 수 있게 세운 것을 한 번 더
+  // 날것으로 붙일 뿐이라 읽는 데 보태는 것이 없다. system 과 같은 이유로 감춘다 —
+  // 무언가 잘못되면 stderr 로 나오고, stderr 는 여기 없다.
+  return kind === "system" || kind === "run_end" || kind === "raw";
 }
 
 const META: Record<string, { label: string; cls: string }> = {

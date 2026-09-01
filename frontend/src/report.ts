@@ -23,15 +23,8 @@ export interface Step {
 /** 시작 시각은 화면에 쓰지 않고 소요를 재는 데만 쓴다. */
 type Pending = Step & { at: string | undefined };
 
-/** 남은 것 한 건. */
-export interface Touched {
-  path: string;
-  kind: "write" | "edit";
-}
-
 export interface RunReport {
   steps: Step[];
-  touched: Touched[];
   tools: number;
   failures: number;
   ms: number | null;
@@ -59,14 +52,6 @@ function dispatched(data: unknown): string | null {
   return str(inputOf(data)?.subagent_type ?? null);
 }
 
-/** 파일을 남기는 도구면 그 경로. */
-function wrote(data: unknown): Touched | null {
-  const name = str(obj(data)?.name);
-  if (name !== "Write" && name !== "Edit") return null;
-  const path = str(inputOf(data)?.file_path ?? null);
-  return path ? { path, kind: name === "Write" ? "write" : "edit" } : null;
-}
-
 function idOf(data: unknown, field: "id" | "tool_use_id"): string | null {
   return str(obj(data)?.[field] ?? null);
 }
@@ -86,7 +71,6 @@ function ms(from: string | undefined, to: string | undefined): number | null {
 export function buildReport(events: LogEvent[]): RunReport {
   const steps: Pending[] = [];
   const byId = new Map<string, Pending>();
-  const seen = new Map<string, Touched>();
   let tools = 0;
   let failures = 0;
 
@@ -113,10 +97,6 @@ export function buildReport(events: LogEvent[]): RunReport {
         steps.push(step);
         byId.set(id, step);
       }
-      const touch = wrote(event.data);
-      // 같은 파일을 여러 번 고쳐도 목록에는 한 번만 — 무엇이 남았는지가 알고 싶은 것이지
-      // 몇 번 손댔는지가 아니다. 처음 본 종류(write/edit)를 유지한다.
-      if (touch && !seen.has(touch.path)) seen.set(touch.path, touch);
       continue;
     }
 
@@ -138,7 +118,6 @@ export function buildReport(events: LogEvent[]): RunReport {
 
   return {
     steps: steps.map(({ at: _at, ...step }) => step),
-    touched: [...seen.values()],
     tools,
     failures,
     ms: ms(first?.ts, last?.ts),
