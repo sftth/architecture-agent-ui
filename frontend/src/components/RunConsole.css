@@ -222,8 +222,19 @@
    에이전트가 낸 것들과 방향으로 구분한다 — 오른쪽에 붙는 것은 내가 쓴 것. */
 .ask {
   display: flex;
+  align-items: baseline;
   justify-content: flex-end;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+/* 이어 말한 세션에서 몇 번째 지시인지. 첫 지시에는 붙이지 않는다 — 한 번뿐인 대화에
+   번호를 매기면 없는 구조를 만들어 보이게 된다. */
+.ask-turn {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
 }
 
 .ask-bubble {

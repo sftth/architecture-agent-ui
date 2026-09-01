@@ -85,11 +85,15 @@ export interface RunSummary {
   ended_at: string | null;
   exit_code: number | null;
   event_count: number;
+  /** 이 세션에 보낸 지시문 수. 2 이상이면 이어 말한 세션이다. */
+  turns: number;
   /** 끝난 run 만 채워진다. */
   usage: RunUsage | null;
 }
 
 export type LogEventKind =
+  /** 사람이 보낸 지시문. 한 세션에 여러 번 올 수 있다. */
+  | "user"
   | "system"
   | "assistant"
   | "thinking"

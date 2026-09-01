@@ -3,6 +3,7 @@ import { ToolCall } from "./components/ToolBlock";
 
 /** 화면에 그릴 한 덩어리. 로그 한 줄이 아니라 "읽을 수 있는 한 조각"이다. */
 export type Block =
+  | { kind: "ask"; key: string; text: string; turn: number }
   | { kind: "md"; key: string; text: string; dim: boolean }
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "meta"; key: string; label: string; text: string; cls: string };
@@ -114,6 +115,17 @@ export function toBlocks(events: LogEvent[]): Block[] {
         key,
         tool: { id: key, name: "결과", input: "", output: text, note: null, failed: false },
       });
+      continue;
+    }
+
+    // 사람이 한 말. 한 세션에 여러 번 물을 수 있으므로 맨 위에 한 번 세우는 것으로는
+    // 부족하다 — 물은 자리에 그대로 서야 질문과 답이 짝지어 읽힌다.
+    if (event.kind === "user") {
+      const text = (event.text ?? "").trim();
+      if (text) {
+        const turn = Number((field(event.data, "turn") as number) ?? 0);
+        blocks.push({ kind: "ask", key, text, turn });
+      }
       continue;
     }
 

@@ -14,6 +14,15 @@ class CreateRunRequest(BaseModel):
     model: Optional[str] = None
     effort: Optional[str] = None
 
+class ContinueRunRequest(BaseModel):
+    """이미 있는 세션에 지시문을 하나 더 보낸다. agent_key 를 주면 그 세션 안에서 대상을 바꾼다."""
+    prompt: str
+    agent_key: str = ""
+    project: Optional[str] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
+
+
 
 class RenameRunRequest(BaseModel):
     title: str
@@ -120,6 +129,8 @@ class RunSummary(BaseModel):
     ended_at: Optional[str] = None
     exit_code: Optional[int] = None
     event_count: int
+    # 이 세션에 보낸 지시문 수. 2 이상이면 이어 말한 세션이다.
+    turns: int = 1
     # 끝난 run 만 채워진다(result 이벤트가 와야 알 수 있다).
     usage: Optional[RunUsage] = None
 

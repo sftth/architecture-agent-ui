@@ -14,6 +14,7 @@ import UsageStrip from "./components/UsageStrip";
 import SideResizer, { useSideWidth } from "./components/SideResizer";
 import {
   AUTH_EXPIRED_EVENT,
+  continueRun,
   createRun,
   deleteRun,
   fetchMe,
@@ -224,10 +225,17 @@ export default function App() {
 
   async function startRun(withProject: string) {
     setGateOpen(false);
-    const run = await createRun(agentKey, prompt, withProject, model, effort);
+    // 보고 있는 세션이 있으면 그 세션에 이어서 묻는다. 전에는 늘 새로 만들어서, 이력에서
+    // 세션을 골라 물어도 그 옆에 새 세션이 하나 더 생겼다.
+    const held = activeRunId && activeRun && activeRun.status !== "running" ? activeRunId : null;
+    const run = held
+      ? await continueRun(held, prompt, agentKey, withProject, model, effort)
+      : await createRun(agentKey, prompt, withProject, model, effort);
     setRunsById((prev) => ({ ...prev, [run.id]: run }));
     setActiveRunId(run.id);
+    // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
     connect(run.id);
+    setPrompt("");
   }
 
   /** 사람이 직접 화면을 옮겼다 — 보려던 자리를 도는 run 이 도로 뺏어가지 않게 한다. */

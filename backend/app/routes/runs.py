@@ -3,7 +3,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import current_user, require_agent_dir
-from ..models import CreateRunRequest, RenameRunRequest, RunSummary, UsageSummary
+from ..models import (
+    ContinueRunRequest,
+    CreateRunRequest,
+    RenameRunRequest,
+    RunSummary,
+    UsageSummary,
+)
 from ..llm_models import check_choice
 from ..projects import project_exists
 from ..runner import run_manager
@@ -27,6 +33,26 @@ async def create_run(req: CreateRunRequest, user: User = Depends(current_user)):
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+    return run.summary()
+
+
+@router.post("/api/runs/{run_id}/turn", response_model=RunSummary)
+async def continue_run(run_id: str, req: ContinueRunRequest, user: User = Depends(current_user)):
+    """고른 세션에 이어서 묻는다. 새 run 을 만들지 않는다."""
+    if not req.prompt.strip():
+        raise HTTPException(400, "prompt is required")
+    run = run_manager.get_run(run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    if req.project and not project_exists(Path(run.agent_dir), req.project):
+        raise HTTPException(400, f"input/ 아래에 없는 프로젝트입니다: {req.project}")
+    model, effort = check_choice(req.model or "", req.effort or "")
+    try:
+        run = run_manager.continue_run(
+            run_id, req.prompt, req.agent_key, req.project, model, effort
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     return run.summary()
 
 

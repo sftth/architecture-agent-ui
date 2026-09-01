@@ -196,6 +196,32 @@ export function workspaceRawUrl(path: string): string {
   return `/api/workspace/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(getToken() ?? "")}`;
 }
 
+/**
+ * 이미 있는 세션에 이어서 묻는다.
+ *
+ * 전에는 이 길이 없어서 보내기가 늘 createRun 이었다 — 이력에서 세션을 골라 물어도
+ * 그 옆에 새 세션이 하나 더 생겼고, 에이전트도 앞 이야기를 몰랐다.
+ */
+export async function continueRun(
+  runId: string,
+  prompt: string,
+  agentKey: string,
+  project: string,
+  model: string,
+  effort: string,
+): Promise<RunSummary> {
+  return request<RunSummary>(`/api/runs/${runId}/turn`, {
+    method: "POST",
+    body: JSON.stringify({
+      prompt,
+      agent_key: agentKey,
+      project: project || null,
+      model: model || null,
+      effort: effort || null,
+    }),
+  });
+}
+
 export async function listRuns(): Promise<RunSummary[]> {
   return request<RunSummary[]>("/api/runs");
 }

@@ -41,8 +41,19 @@ class RunState:
     def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
                  stage_title: str, agent_key: str, agent_label: str, prompt: str,
                  full_prompt: str, project: Optional[str] = None,
-                 model: str = "", effort: str = "", title: str = ""):
+                 model: str = "", effort: str = "", title: str = "",
+                 session_id: str = "", turns: int = 0):
         self.id = run_id
+        # claude CLI 쪽 대화 식별자. 첫 턴은 --session-id 로 지정하고, 이후 턴은
+        # --resume 으로 그 대화를 이어받는다. 이것이 없으면 "같은 세션"은 화면에서만
+        # 같고 에이전트는 앞 이야기를 하나도 모른다.
+        self.session_id = session_id or str(uuid.uuid4())
+        # 지금까지 이 세션에 보낸 지시문 수. 0 이면 아직 한 번도 안 돌린 세션이다.
+        self.turns = turns
+        # CLI 쪽에 이어받을 대화가 실제로 있는가. 이 기능이 생기기 전에 만들어진 세션은
+        # meta 에 session_id 가 없어서, 있다고 치고 --resume 하면 "No conversation found"
+        # 로 실패한다. 그런 세션은 새 대화로 열되 그 사실을 화면에 말한다.
+        self.resumable = bool(session_id)
         self.title = title or default_title(prompt)
         # 디스크에서 되살린 run 은 이벤트를 아직 안 읽었다는 뜻(목록에는 필요 없다).
         self.restored = False
@@ -88,6 +99,7 @@ class RunState:
             exit_code=self.exit_code,
             event_count=len(self.events),
             usage=self.usage,
+            turns=self.turns,
         )
 
     def record(self) -> dict:
@@ -96,6 +108,8 @@ class RunState:
         data = self.summary().model_dump()
         data["user_id"] = self.user_id
         data["agent_dir"] = self.agent_dir
+        # 백엔드를 다시 띄워도 이어서 말할 수 있어야 한다 — CLI 대화 식별자를 함께 남긴다.
+        data["session_id"] = self.session_id
         return data
 
     def _emit(self, kind: str, *, text: Optional[str] = None, data=None,
@@ -128,8 +142,10 @@ class RunState:
             finally:
                 self._log = None
         store.save_meta(self.id, self.record())
+        # 구독자에게 끝을 알린다. 세션은 계속 살아 있고, 다음 턴이 오면 다시 연결한다.
         for queue in list(self.subscribers):
             queue.put_nowait(None)  # sentinel: stream closed
+        self.subscribers.clear()
 
 
 def _shrink_data(data):
@@ -174,6 +190,13 @@ def _handle_stream_line(run: RunState, raw_line: str):
     ev_type = raw.get("type", "")
     subtype = raw.get("subtype", "")
     parent_id = raw.get("parent_tool_use_id")
+
+    # 우리가 준 --session-id 를 CLI 가 그대로 쓰는지는 CLI 사정이다. 실제로 쓴 값을
+    # 받아 두어야 다음 턴의 --resume 이 빗나가지 않는다.
+    said = raw.get("session_id")
+    if isinstance(said, str) and said and said != run.session_id:
+        run.session_id = said
+        store.save_meta(run.id, run.record())
 
     if "hook" in ev_type or "hook" in subtype:
         run._emit("hook", text=f"{ev_type}/{subtype}", data=raw, parent_tool_use_id=parent_id)
@@ -290,6 +313,10 @@ async def _execute(run: RunState):
     이벤트가 한 건도 안 나와 화면에는 "연결 중"만 남았다. 스레드+Popen은 루프 종류를
     가리지 않으므로, 어떻게 띄운 백엔드에서도 똑같이 돈다.
     """
+    # 이 턴에 무엇을 물었는지 로그에 남긴다 — 한 세션에 여러 번 물으면 콘솔이 그 자리를
+    # 알아야 질문과 답을 짝지어 보여 줄 수 있다.
+    run._emit("user", text=run.prompt, data={"full_prompt": run.full_prompt, "turn": run.turns + 1})
+
     argv = [
         CLAUDE_BIN,
         "-p", run.full_prompt,
@@ -298,14 +325,34 @@ async def _execute(run: RunState):
         "--permission-mode", CLAUDE_PERMISSION_MODE,
         "--forward-subagent-text",
         "--include-hook-events",
-        "--no-session-persistence",
     ]
+    # 첫 턴은 대화를 열고, 이후 턴은 그 대화를 이어받는다.
+    #
+    # 전에는 --no-session-persistence 를 붙여 CLI 가 대화를 디스크에 남기지 않게 했다.
+    # 그래서 이어서 물을 방법이 아예 없었고, 화면도 그 사실에 맞춰 "보낼 때마다 새 run"
+    # 이었다. 이어 말하기를 되살리려면 저장이 먼저다 — 이 세션의 것만 남는다.
+    if run.turns > 0 and not run.resumable:
+        run._emit(
+            "stderr",
+            text="이 세션은 이어 말하기가 생기기 전에 만들어져 앞 대화를 넘겨받을 수 없습니다. "
+                 "새 대화로 이어갑니다 — 위쪽 기록은 화면에만 남고 에이전트는 모릅니다.",
+        )
+    if run.turns == 0 or not run.resumable:
+        argv += ["--session-id", run.session_id]
+    else:
+        argv += ["--resume", run.session_id]
+    run.turns += 1
+    # 이 턴부터는 이어받을 대화가 생긴다.
+    run.resumable = True
     # 고르지 않았으면 붙이지 않는다 = CLI 기본값을 그대로 쓴다.
     # 값은 llm_models.check_choice를 통과한 것만 들어온다(argv에 나가므로).
     if run.model:
         argv += ["--model", run.model]
     if run.effort:
         argv += ["--effort", run.effort]
+
+    if run._log is None:
+        run._log = store.open_log(run.id)
 
     loop = asyncio.get_running_loop()
     try:
@@ -341,6 +388,17 @@ async def _execute(run: RunState):
             # 파이프를 더 못 읽으면 자식이 write에서 막혀 wait()가 끝나지 않는다. 먼저 종료시킨다.
             await _terminate(run.process)
         exit_code = await asyncio.to_thread(run.process.wait)
+        if exit_code != 0 and any(
+            "No conversation found" in (e.text or "")
+            for e in run.events[-12:]
+            if e.kind == "stderr"
+        ):
+            # 대화 기록이 사라진 경우(만료·정리). 다음 턴은 새 대화로 열게 표시해 둔다.
+            run.resumable = False
+            run._emit(
+                "stderr",
+                text="이어받을 대화 기록이 CLI 쪽에 없습니다. 다시 보내면 새 대화로 시작합니다.",
+            )
         status = "error" if failures or exit_code != 0 else "success"
         run._finish(status, exit_code)
     except asyncio.CancelledError:
@@ -381,6 +439,8 @@ class RunManager:
                     model=meta.get("model") or "",
                     effort=meta.get("effort") or "",
                     title=meta.get("title", ""),
+                    session_id=meta.get("session_id", ""),
+                    turns=meta.get("turns", 1),
                 )
             except KeyError:
                 continue
@@ -423,6 +483,56 @@ class RunManager:
         )
         self.runs[run_id] = run
         run._log = store.open_log(run_id)
+        store.save_meta(run_id, run.record())
+        self._tasks[run_id] = asyncio.create_task(_execute(run))
+        return run
+
+    def continue_run(self, run_id: str, prompt: str, agent_key: str = "",
+                     project: Optional[str] = None, model: str = "",
+                     effort: str = "") -> RunState:
+        """이미 있는 세션에 지시문을 하나 더 보낸다.
+
+        전에는 이런 길이 없었다. 보내기는 늘 create_run 이라, 이력에서 세션을 골라
+        무언가를 물으면 그 세션 옆에 새 세션이 하나 더 생겼다. 화면만의 문제가 아니라
+        에이전트도 앞 이야기를 몰랐다 — 매번 새 대화였기 때문이다.
+
+        같은 run 에 턴을 덧붙이고, CLI 에는 --resume 으로 같은 대화를 잇는다.
+        """
+        run = self.runs.get(run_id)
+        if run is None:
+            raise ValueError(f"세션을 찾을 수 없습니다: {run_id}")
+        if run.status == "running":
+            raise ValueError("아직 실행 중인 세션입니다")
+
+        # 이어 말할 때도 대상을 바꿀 수 있다 — 같은 대화 안에서 다른 plan 을 부를 수 있어야 한다.
+        if agent_key and agent_key != run.agent_key:
+            stage, agent = find_agent(Path(run.agent_dir), agent_key)
+            if agent is None:
+                raise ValueError(f"알 수 없는 agent_key: {agent_key}")
+            run.agent_key = agent_key
+            run.agent_label = agent["label"]
+            run.stage_key = stage["key"]
+            run.stage_title = stage["title"]
+
+        if project is not None:
+            run.project = project
+        if model:
+            run.model = model
+        if effort:
+            run.effort = effort
+
+        run.prompt = prompt
+        full_prompt = f"@{run.agent_key} {prompt}".strip()
+        if run.project:
+            full_prompt = f"{full_prompt} (프로젝트: {run.project})"
+        run.full_prompt = full_prompt
+
+        run.status = "running"
+        run.ended_at = None
+        run.exit_code = None
+        # 되살린 run 이면 앞 턴의 로그를 먼저 읽어 둔다 — 안 그러면 seq 가 1부터 다시
+        # 시작해 앞 기록과 뒤엉킨다.
+        self.load_events(run)
         store.save_meta(run_id, run.record())
         self._tasks[run_id] = asyncio.create_task(_execute(run))
         return run

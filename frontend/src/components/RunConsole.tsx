@@ -134,14 +134,23 @@ function RunConsole({
       </header>
 
       <div className="console-body" ref={scrollRef} onScroll={handleScroll}>
-        {/* 무엇을 시켰는지가 로그 맨 위에 있어야 한다 — 머리의 제목은 이름일 뿐이다. */}
-        {run.prompt && (
+        {/* 무엇을 시켰는지는 로그 안에 제 자리로 선다(ask 블록). 옛 run 은 그 이벤트가
+            없으므로 맨 위에 한 번 세워 준다 — 기록이 사라져 보이면 안 된다. */}
+        {run.prompt && !blocks.some((b) => b.kind === "ask") && (
           <div className="ask">
             <div className="ask-bubble">{run.prompt}</div>
           </div>
         )}
         <div ref={flowRef}>
         {blocks.map((block) => {
+          if (block.kind === "ask") {
+            return (
+              <div key={block.key} className="ask">
+                {block.turn > 1 && <span className="ask-turn">{block.turn}번째 지시</span>}
+                <div className="ask-bubble">{block.text}</div>
+              </div>
+            );
+          }
           if (block.kind === "tool") return <ToolBlock key={block.key} tool={block.tool} />;
           if (block.kind === "md") {
             return (
