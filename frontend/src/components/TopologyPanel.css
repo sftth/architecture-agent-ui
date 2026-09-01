@@ -791,14 +791,19 @@
 
 /* ── 알람 ────────────────────────────────────────────────
    토폴로지는 "어디가 아픈가"를 색으로 말한다. 여기는 "무엇이 왜"를 말한다. */
+/* 접혀 있을 때는 한 줄. 이 화면의 본체는 토폴로지이고, 알람이 그것을 자르면 안 된다.
+   펼치면 그때 자리를 내준다 — 얼마나 볼지는 사람이 정한다. */
 .alarms {
   flex: none;
-  max-height: 34%;
   display: flex;
   flex-direction: column;
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
   border-top: 1px solid var(--line-cyan-dim);
-  padding-top: var(--space-2);
+}
+
+.alarms--open {
+  max-height: 46%;
+  min-height: 0;
 }
 
 .alarms-head {
@@ -806,8 +811,27 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: 4px;
+  width: 100%;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
 }
+
+.alarms-head:hover { background: var(--ink-850); }
+
+/* 접혀 있어도 위험이 있다는 것은 알아야 한다 — 색이 그 일을 한다. */
+.alarms-head--crit .alarms-title { color: var(--gate-rose); }
+
+.alarms-caret {
+  flex: none;
+  align-self: center;
+  color: var(--paper-500);
+  transition: transform 0.15s ease;
+}
+
+.alarms-caret--open { transform: rotate(90deg); }
 
 .alarms-title {
   font-family: var(--font-label);

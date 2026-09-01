@@ -32,6 +32,7 @@ const INTERVALS = [
 ];
 const AUTO_KEY = "architecture-agent-ui:topo-auto";
 const EVERY_KEY = "architecture-agent-ui:topo-every";
+const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
 
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
@@ -738,16 +739,34 @@ function AlarmList({
   onSend: (text: string) => void;
 }) {
   const crit = alarms.filter((a) => a.check.verdict === "CRIT").length;
+  // 기본은 접힘. 펼쳐 두면 다이어그램이 잘린다 — 이 화면의 본체는 토폴로지다.
+  // 대신 접힌 줄이 스스로 말하게 한다(건수 + 위험이면 붉은 기운).
+  const [open, setOpen] = useState(() => localStorage.getItem(ALARM_KEY) === "on");
 
   return (
-    <section className="alarms" aria-label="알람">
-      <header className="alarms-head">
+    <section className={`alarms${open ? " alarms--open" : ""}`} aria-label="알람">
+      <button
+        type="button"
+        className={`alarms-head${crit > 0 ? " alarms-head--crit" : ""}`}
+        aria-expanded={open}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          localStorage.setItem(ALARM_KEY, next ? "on" : "off");
+        }}
+      >
+        <span className={`alarms-caret${open ? " alarms-caret--open" : ""}`} aria-hidden="true">
+          <CaretIcon />
+        </span>
         <span className="alarms-title">알람</span>
         <span className="alarms-count">{alarms.length}</span>
         {crit > 0 && <span className="alarms-crit">위험 {crit}</span>}
-        <span className="alarms-hint">끌어다 놓거나 「보내기」로 지시문에 넣습니다</span>
-      </header>
+        <span className="alarms-hint">
+          {open ? "끌어다 놓거나 「보내기」로 지시문에 넣습니다" : "눌러서 펼치기"}
+        </span>
+      </button>
 
+      {open && (
       <ul className="alarms-list">
         {alarms.map((a) => {
           const text = alarmText(a, doc, source);
@@ -791,6 +810,22 @@ function AlarmList({
           );
         })}
       </ul>
+      )}
     </section>
+  );
+}
+
+function CaretIcon() {
+  return (
+    <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+      <path
+        d="M4.2 2.4L8 6l-3.8 3.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

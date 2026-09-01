@@ -233,9 +233,11 @@ export default function App() {
       return;
     }
     setSendError(null);
-    const text = `설계서 기준으로 WEB/WAS 상태를 점검해줘 (mode=snapshot)`;
+    // 플래너가 먼저 받는다 — 대상을 설계서에서 도출해 확정한 뒤 점검 executor 에 넘긴다.
+    // 화면이 executor 를 직접 부르면 그 도출이 통째로 빠진다.
+    const text = "설계서 기준으로 WEB/WAS 상태를 점검해줘 (mode=snapshot)";
     try {
-      const run = await createRun("middleware-status-impl", text, project, model, effort);
+      const run = await createRun("middleware-status-plan", text, project, model, effort);
       setRunsById((prev) => ({ ...prev, [run.id]: run }));
       setActiveRunId(run.id);
       connect(run.id);
@@ -374,7 +376,7 @@ ${text}` : text));
   const common = useMemo(() => commonStage(stages), [stages]);
   // 점검 트리거는 그 agent 가 실제로 있을 때만 세운다 — 없는 것을 부르는 단추를 두지 않는다.
   const hasStatusAgent = useMemo(
-    () => stages.some((st) => st.agents.some((a) => a.key === "middleware-status-impl")),
+    () => stages.some((st) => st.agents.some((a) => a.key === "middleware-status-plan")),
     [stages],
   );
 
