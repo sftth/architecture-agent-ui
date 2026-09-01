@@ -61,6 +61,8 @@ export default function App() {
   const [managingProjects, setManagingProjects] = useState(false);
   // 프로젝트 없이 실행하려 할 때 앞을 막는 알림
   const [gateOpen, setGateOpen] = useState(false);
+  // 보내기가 실패했을 때 할 말. 없으면 아무 일도 안 일어난 것처럼 보인다.
+  const [sendError, setSendError] = useState<string | null>(null);
   // 실행에 쓸 모델·effort (claude CLI --model / --effort). 빈 값이면 CLI 기본값.
   const [models, setModels] = useState<ModelDef[]>([]);
   const [model, setModel] = useState<string>("");
@@ -225,17 +227,29 @@ export default function App() {
 
   async function startRun(withProject: string) {
     setGateOpen(false);
+    setSendError(null);
     // 보고 있는 세션이 있으면 그 세션에 이어서 묻는다. 전에는 늘 새로 만들어서, 이력에서
     // 세션을 골라 물어도 그 옆에 새 세션이 하나 더 생겼다.
     const held = activeRunId && activeRun && activeRun.status !== "running" ? activeRunId : null;
-    const run = held
-      ? await continueRun(held, prompt, agentKey, withProject, model, effort)
-      : await createRun(agentKey, prompt, withProject, model, effort);
-    setRunsById((prev) => ({ ...prev, [run.id]: run }));
-    setActiveRunId(run.id);
-    // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
-    connect(run.id);
-    setPrompt("");
+    try {
+      const run = held
+        ? await continueRun(held, prompt, agentKey, withProject, model, effort)
+        : await createRun(agentKey, prompt, withProject, model, effort);
+      setRunsById((prev) => ({ ...prev, [run.id]: run }));
+      setActiveRunId(run.id);
+      // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
+      connect(run.id);
+      setPrompt("");
+    } catch (err) {
+      // 여기가 비어 있었다. 보내기가 실패하면 화면에서는 아무 일도 안 일어난 것과
+      // 구별되지 않아, 무엇이 잘못됐는지 알 길이 없었다. 쓰던 지시문은 지우지 않는다.
+      const detail = err instanceof Error ? err.message : String(err);
+      setSendError(
+        held
+          ? `이 세션에 이어서 보내지 못했습니다 — ${detail}`
+          : `실행을 시작하지 못했습니다 — ${detail}`,
+      );
+    }
   }
 
   /** 사람이 직접 화면을 옮겼다 — 보려던 자리를 도는 run 이 도로 뺏어가지 않게 한다. */
@@ -489,6 +503,14 @@ export default function App() {
             onOpenSessions={openSessions}
             onNewSession={handleNewSession}
           />
+          {sendError && (
+            <div className="send-error" role="alert">
+              <span>{sendError}</span>
+              <button type="button" onClick={() => setSendError(null)} aria-label="닫기">
+                ✕
+              </button>
+            </div>
+          )}
           <Composer
             value={prompt}
             onChange={setPrompt}

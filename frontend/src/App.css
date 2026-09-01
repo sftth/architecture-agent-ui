@@ -166,3 +166,35 @@
     padding: var(--space-4);
   }
 }
+
+/* 보내기가 실패했을 때. 입력판 바로 위에 붙는다 — 실패한 자리에서 말해야 한다.
+   쓰던 지시문은 지우지 않으므로 고쳐서 다시 보낼 수 있다. */
+.send-error {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--composer-h, 180px) + var(--space-2));
+  z-index: 5;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--gate-rose);
+  border-radius: var(--radius-md);
+  background: var(--ink-900);
+  box-shadow: var(--shadow-panel);
+  color: var(--gate-rose);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-body);
+}
+
+.send-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.send-error button {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--gate-rose);
+  cursor: pointer;
+}
