@@ -278,3 +278,9 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* 답을 기다리는 말. 다른 말들과 같은 색이면 그냥 흘러간다. */
+.say-bubble--asks {
+  border-color: var(--signal-amber);
+  background: rgba(242, 166, 90, 0.06);
+}

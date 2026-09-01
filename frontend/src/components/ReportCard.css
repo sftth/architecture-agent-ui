@@ -165,3 +165,22 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* 답을 기다리는 보고. 결과와 같은 모양이면 "다 끝났다"로 읽혀서 아무도 답하지 않는다. */
+.report--asks {
+  border-left-color: var(--signal-amber);
+}
+
+.report--asks .report-badge {
+  color: var(--signal-amber);
+}
+
+.report-answer {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--tick-quiet);
+  background: rgba(242, 166, 90, 0.07);
+  color: var(--signal-amber);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+}

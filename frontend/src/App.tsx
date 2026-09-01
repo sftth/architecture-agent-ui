@@ -225,6 +225,31 @@ export default function App() {
     await startRun(project);
   }
 
+  /** 운영 화면의 점검 트리거. 대화에 끼워 넣지 않고 늘 새 세션으로 연다 —
+   *  주기적으로 도는 점검이 하던 이야기 중간에 섞이면 둘 다 읽기 어려워진다. */
+  async function runCheck() {
+    if (!project) {
+      setGateOpen(true);
+      return;
+    }
+    setSendError(null);
+    const text = `설계서 기준으로 WEB/WAS 상태를 점검해줘 (mode=snapshot)`;
+    try {
+      const run = await createRun("middleware-status-impl", text, project, model, effort);
+      setRunsById((prev) => ({ ...prev, [run.id]: run }));
+      setActiveRunId(run.id);
+      connect(run.id);
+    } catch (err) {
+      setSendError(`점검을 시작하지 못했습니다 — ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** 화면 어디서든 지시문 입력판으로 글을 넘긴다(끌어다 놓는 것과 같은 길). */
+  const sendToContext = useCallback((text: string) => {
+    setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()}
+${text}` : text));
+  }, []);
+
   async function startRun(withProject: string) {
     setGateOpen(false);
     setSendError(null);
@@ -347,6 +372,11 @@ export default function App() {
   const visibleStages = useMemo(() => stagesForPhase(stages, phase), [stages, phase]);
   // 어느 단계에서 보든 함께 딸려 오는 공통 유틸리티.
   const common = useMemo(() => commonStage(stages), [stages]);
+  // 점검 트리거는 그 agent 가 실제로 있을 때만 세운다 — 없는 것을 부르는 단추를 두지 않는다.
+  const hasStatusAgent = useMemo(
+    () => stages.some((st) => st.agents.some((a) => a.key === "middleware-status-impl")),
+    [stages],
+  );
 
   const agentStage: StageDef | undefined = useMemo(
     () => stages.find((stage) => stage.agents.some((a) => a.key === agentKey)),
@@ -487,7 +517,11 @@ export default function App() {
           {/* 운영 단계의 산출물은 status-middleware.json 하나이고, 그건 파일 목록으로
               보는 것보다 토폴로지로 보는 편이 훨씬 낫다. 그래서 그 자리를 바꿔 끼운다. */}
           {phase === "operate" ? (
-            <TopologyPanel project={project} />
+            <TopologyPanel
+              project={project}
+              onCheck={hasStatusAgent ? runCheck : null}
+              onSendToContext={sendToContext}
+            />
           ) : (
             <IoPanel phase={phase} project={project} activeRun={activeRun} />
           )}
@@ -514,11 +548,9 @@ export default function App() {
           <Composer
             value={prompt}
             onChange={setPrompt}
-            /* 입력·산출물에서 끌어온 파일이 곧 이번 작업의 입력이 되도록 경로를 붙인다. */
-            onDropPath={(path) =>
-              setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()}
-${path}` : path))
-            }
+            /* 산출물의 파일 경로든 운영 알람의 이상 내용이든, 끌어온 것이 곧 이번 작업의
+               입력이 되도록 그대로 붙인다. */
+            onDropText={sendToContext}
             onRun={handleRun}
             onStop={handleStop}
             running={activeRun?.status === "running"}

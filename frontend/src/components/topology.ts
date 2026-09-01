@@ -253,3 +253,53 @@ export function summaryRows(target: StatusTarget): Row[] {
 export function badChecks(target: StatusTarget): StatusCheck[] {
   return checksOf(target).filter((c) => c.verdict === "WARN" || c.verdict === "CRIT");
 }
+
+/* ── 알람 ────────────────────────────────────────────────
+   점검 결과에서 주의·위험만 뽑아 한 줄씩 세운다. 토폴로지는 "어디가 아픈가"를 보여 주고,
+   알람은 "무엇이 잘못됐는가"를 말한다. 사람이 이 줄을 그대로 집어 교정 agent 에게 넘긴다. */
+
+export interface Alarm {
+  id: string;
+  target: StatusTarget;
+  check: StatusCheck;
+}
+
+/** 위험이 먼저, 그 다음 주의. 같은 등급이면 대상 순서를 지킨다. */
+export function alarmsOf(doc: StatusDoc | null): Alarm[] {
+  const out: Alarm[] = [];
+  for (const target of doc?.targets ?? []) {
+    for (const [i, check] of checksOf(target).entries()) {
+      if (check.verdict === "CRIT" || check.verdict === "WARN") {
+        out.push({ id: `${target.id}:${check.id}:${i}`, target, check });
+      }
+    }
+  }
+  return out.sort((a, b) => rank(b.check.verdict) - rank(a.check.verdict));
+}
+
+function rank(v: Verdict): number {
+  return v === "CRIT" ? 2 : v === "WARN" ? 1 : 0;
+}
+
+/**
+ * 알람을 컨텍스트에 끌어다 놓았을 때 들어갈 글.
+ *
+ * 교정 agent 가 이것만 보고 판단할 수 있어야 한다 — 무엇이, 어디서, 얼마나, 어떤 기준에
+ * 걸렸는지, 그리고 원본이 어디 있는지. 사람이 다시 타이핑해 채워 넣게 만들지 않는다.
+ */
+export function alarmText(alarm: Alarm, doc: StatusDoc | null, source: string): string {
+  const t = alarm.target;
+  const c = alarm.check;
+  const where = [t.role, t.engine, t.private_ip ?? t.ip, t.hostname].filter(Boolean).join(" · ");
+  const lines = [
+    `[${c.verdict}] ${t.id} (${where})`,
+    `  ${c.id} ${c.name}`,
+    `  값: ${c.value === null || c.value === undefined ? "—" : String(c.value)}`,
+    `  기준: ${c.rule ?? "—"}`,
+  ];
+  if (c.note) lines.push(`  비고: ${c.note}`);
+  if (t.design_ref) lines.push(`  설계 근거: ${t.design_ref}`);
+  if (doc?.generated_at) lines.push(`  점검 시각: ${doc.generated_at}`);
+  lines.push(`  출처: ${source}`);
+  return lines.join("\n");
+}

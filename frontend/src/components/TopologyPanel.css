@@ -770,3 +770,178 @@
 
 .rack-why--warn { background: rgba(242, 166, 90, 0.12); color: var(--signal-amber); }
 .rack-why--crit { background: rgba(225, 102, 124, 0.13); color: var(--gate-rose); }
+
+/* 화면에서 점검을 거는 단추. 결과를 기다리는 일이라 눈에 띄어야 하지만,
+   자동 갱신과 나란히 서므로 색으로 소리치지는 않는다. */
+.topo-check {
+  flex: none;
+  padding: 3px 12px;
+  border: 1px solid var(--line-cyan);
+  border-radius: 999px;
+  background: var(--ink-850);
+  color: var(--paper-100);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.topo-check:hover { background: var(--ink-800); }
+
+/* ── 알람 ────────────────────────────────────────────────
+   토폴로지는 "어디가 아픈가"를 색으로 말한다. 여기는 "무엇이 왜"를 말한다. */
+.alarms {
+  flex: none;
+  max-height: 34%;
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--line-cyan-dim);
+  padding-top: var(--space-2);
+}
+
+.alarms-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+}
+
+.alarms-title {
+  font-family: var(--font-label);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--paper-100);
+}
+
+.alarms-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink-800);
+  color: var(--paper-300);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.alarms-crit {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(225, 102, 124, 0.16);
+  color: var(--gate-rose);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+}
+
+.alarms-hint {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--paper-500);
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.alarms-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alarm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  /* 끌 수 있다는 것을 커서로 먼저 알린다. */
+  cursor: grab;
+}
+
+.alarm:active { cursor: grabbing; }
+.alarm:hover { background: var(--ink-850); }
+
+.alarm--crit { border-left-color: var(--gate-rose); }
+.alarm--warn { border-left-color: var(--signal-amber); }
+
+.alarm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.alarm-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.alarm-tag--crit { background: rgba(225, 102, 124, 0.18); color: var(--gate-rose); }
+.alarm-tag--warn { background: rgba(242, 166, 90, 0.18); color: var(--signal-amber); }
+
+.alarm-target {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-100);
+}
+
+.alarm-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.alarm-value {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+/* 끌기를 모르는 사람도 넘길 수 있어야 한다 — 손이 올라오면 나타난다. */
+.alarm-send {
+  flex: none;
+  margin-right: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  background: var(--ink-850);
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.alarm:hover .alarm-send,
+.alarm-send:focus-visible { opacity: 1; }
+
+.alarm-send:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}

@@ -10,16 +10,27 @@ import "./ReportCard.css";
  *
  * 본문은 접지 않는다. 결과 보고에서 가려야 할 것이 있다면 그건 결과가 아니다.
  */
-export default function ReportCard({ text, report }: { text: string; report: RunReport }) {
+export default function ReportCard({
+  text,
+  report,
+  asks,
+}: {
+  text: string;
+  report: RunReport;
+  /** 에이전트가 [결정 필요] 로 답을 기다리는 중인가. */
+  asks: boolean;
+}) {
   const total = report.steps.length;
   const done = report.steps.filter((s) => s.done).length;
   const failed = report.steps.filter((s) => s.failed).length;
   const took = humanMs(report.ms);
 
   return (
-    <section className={`report${failed > 0 ? " report--failed" : ""}`}>
+    <section
+      className={`report${failed > 0 ? " report--failed" : ""}${asks ? " report--asks" : ""}`}
+    >
       <header className="report-head">
-        <span className="report-badge">결과 보고</span>
+        <span className="report-badge">{asks ? "결정 필요" : "결과 보고"}</span>
 
         {/* 건수가 분명하면 숫자보다 칸이 빠르다 — 몇 개 중 몇 개인지가 형태로 보인다. */}
         {total > 0 && (
@@ -76,6 +87,11 @@ export default function ReportCard({ text, report }: { text: string; report: Run
       <div className="report-body">
         <Markdown text={text} />
       </div>
+
+      {/* 답을 어디에 쓰는지 말해 준다 — 묻고 끝내 놓고 답할 곳을 안 알려 주면 멈춘다. */}
+      {asks && (
+        <p className="report-answer">아래 입력판에 답을 적어 보내면 이 세션에 이어서 진행합니다.</p>
+      )}
     </section>
   );
 }

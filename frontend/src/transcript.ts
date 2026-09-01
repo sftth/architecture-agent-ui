@@ -6,9 +6,9 @@ import { RunReport, buildReport } from "./report";
 export type Block =
   | { kind: "ask"; key: string; text: string; turn: number }
   /** 에이전트가 한 말. dim 은 사고 과정이라 말풍선 대신 조용히 흘린다. */
-  | { kind: "md"; key: string; text: string; dim: boolean }
+  | { kind: "md"; key: string; text: string; dim: boolean; asks: boolean }
   /** 턴의 마지막 말 — 결과 보고로 세운다. report 는 로그에서 뽑은 실행 요약이다. */
-  | { kind: "report"; key: string; text: string; report: RunReport }
+  | { kind: "report"; key: string; text: string; report: RunReport; asks: boolean }
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "meta"; key: string; label: string; text: string; cls: string };
 
@@ -29,6 +29,15 @@ function isNoise(kind: string): boolean {
   // 무언가 잘못되면 stderr 로 나오고, stderr 는 여기 없다.
   return kind === "system" || kind === "run_end" || kind === "raw";
 }
+
+/**
+ * 에이전트가 답을 기다리고 있는가.
+ *
+ * 비대화형으로 도는 하네스라 되묻고 기다릴 수 없다. 대신 agent 는 [결정 필요] 를 적고
+ * 그 자리에서 끝낸다 — 사람이 답을 보내면 같은 세션의 다음 턴으로 이어진다.
+ * 그 말이 긴 보고 안에 묻히면 아무도 답하지 않으므로 화면이 따로 표시한다.
+ */
+const DECISION = /\[결정\s*필요\]/;
 
 const META: Record<string, { label: string; cls: string }> = {
   system: { label: "SYS", cls: "line--system" },
@@ -100,6 +109,7 @@ export function toBlocks(events: LogEvent[]): Block[] {
         key: block.key,
         text: block.text,
         report: buildReport(events.slice(turnStart, end)),
+        asks: block.asks,
       };
       return;
     }
@@ -167,13 +177,13 @@ export function toBlocks(events: LogEvent[]): Block[] {
       if (event.kind === "result" && prev && prev.kind === "md" && prev.text === text) {
         blocks.pop();
       }
-      blocks.push({ kind: "md", key, text, dim: false });
+      blocks.push({ kind: "md", key, text, dim: false, asks: DECISION.test(text) });
       continue;
     }
 
     if (event.kind === "thinking") {
       const text = (event.text ?? "").trim();
-      if (text) blocks.push({ kind: "md", key, text, dim: true });
+      if (text) blocks.push({ kind: "md", key, text, dim: true, asks: false });
       continue;
     }
 

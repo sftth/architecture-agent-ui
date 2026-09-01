@@ -18,7 +18,7 @@ import "./Composer.css";
 export default function Composer({
   value,
   onChange,
-  onDropPath,
+  onDropText,
   onRun,
   onStop,
   running,
@@ -35,7 +35,8 @@ export default function Composer({
   value: string;
   onChange: (value: string) => void;
   /** 입력·산출물 목록에서 파일을 끌어다 놓으면 그 경로를 받는다. */
-  onDropPath: (path: string) => void;
+  /** 끌어다 놓은 글. 파일 경로일 수도, 운영 알람의 이상 내용일 수도 있다. */
+  onDropText: (text: string) => void;
   onRun: () => void;
   onStop: () => void;
   running: boolean;
@@ -162,8 +163,8 @@ export default function Composer({
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          const path = e.dataTransfer.getData("text/plain");
-          if (path) onDropPath(path);
+          const text = e.dataTransfer.getData("text/plain");
+          if (text) onDropText(text);
         }}
         placeholder={
           agent

@@ -21,9 +21,9 @@ export function planOf(stage: StageDef): AgentDef | undefined {
  * 하네스 순서대로 부른다. impl을 직접 부르면 eval이 통째로 빠지는데, 그건
  * intent-plan.md가 "하네스 위반"이라고 못박은 바로 그 경로다.
  *
- * 예외는 plan이 없는 스테이지 하나(common: md -> docx 변환, LLM Wiki 조회 같은 단발
- * 유틸리티라 지휘할 순서 자체가 없다). 여기서만 자기 agent를 그대로 내놓는다 —
- * 아니면 그 스테이지를 화면에서 아예 쓸 수 없다.
+ * 예외는 plan이 없는 스테이지다. common(md -> docx 변환, LLM Wiki 조회 같은 단발 유틸리티)과
+ * operation(점검·교정 executor 둘)이 그렇다 — 지휘할 순서 자체가 없거나, 화면이 executor 를
+ * 직접 부른다. 이때는 자기 agent를 그대로 내놓는다. 아니면 그 스테이지를 아예 쓸 수 없다.
  */
 export function commandableAgents(stage: StageDef): AgentDef[] {
   const plan = planOf(stage);

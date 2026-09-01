@@ -2,11 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ioPath } from "../phases";
 import { readWorkspaceText } from "../api/client";
 import {
+  Alarm,
   Edge,
   StatusDoc,
   StatusTarget,
   VERDICT_LABEL,
   Verdict,
+  alarmText,
+  alarmsOf,
   badChecks,
   worst,
   checksOf,
@@ -42,7 +45,17 @@ const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
  * 층 사이의 선은 A05(업스트림 도달성)에서 나온다. 즉 이 그림은 설계대로 붙어 있는지를
  * 실제로 닿아 본 결과 위에 겹쳐 보여 준다. 닿지 않는 선은 흐르지 않는다.
  */
-export default function TopologyPanel({ project }: { project: string }) {
+export default function TopologyPanel({
+  project,
+  onCheck,
+  onSendToContext,
+}: {
+  project: string;
+  /** 화면에서 점검을 건다. 이 판이 직접 돌리지 않고 실행 경로에 넘긴다. */
+  onCheck: (() => void) | null;
+  /** 알람 내용을 지시문 입력판으로 넘긴다(끌어다 놓는 것과 같은 길). */
+  onSendToContext: (text: string) => void;
+}) {
   const [doc, setDoc] = useState<StatusDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -90,6 +103,7 @@ export default function TopologyPanel({ project }: { project: string }) {
     [targets],
   );
   const edges = useMemo(() => edgesOf(targets), [targets]);
+  const alarms = useMemo(() => alarmsOf(doc), [doc]);
   const byId = useMemo(() => new Map(targets.map((t) => [t.id, t])), [targets]);
 
   return (
@@ -109,6 +123,11 @@ export default function TopologyPanel({ project }: { project: string }) {
           {doc?.run?.mode && ` · ${doc.run.mode}`}
         </span>
 
+        {onCheck && (
+          <button type="button" className="topo-check" onClick={onCheck}>
+            지금 점검
+          </button>
+        )}
         <PollControl
           auto={auto}
           every={every}
@@ -139,6 +158,16 @@ export default function TopologyPanel({ project }: { project: string }) {
 
       {targets.length > 0 && (
         <Tiers webs={webs} wases={wases} edges={edges} onPick={setPicked} onHover={setHover} />
+      )}
+
+      {alarms.length > 0 && (
+        <AlarmList
+          alarms={alarms}
+          source={path ?? ""}
+          doc={doc}
+          onOpen={(id) => setPicked(id)}
+          onSend={onSendToContext}
+        />
       )}
 
       {hover && byId.get(hover.id) && (
@@ -683,5 +712,85 @@ function Detail({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 알람 — 점검 결과에서 주의·위험만 뽑아 한 줄씩.
+ *
+ * 토폴로지는 "어디가 아픈가"를 색으로 말하지만, 무엇이 왜 잘못됐는지는 노드를 하나씩
+ * 열어 봐야 알 수 있었다. 아픈 것만 따로 세워 두면 눈이 거기서 멈춘다.
+ *
+ * 각 줄은 그대로 집어 컨텍스트에 넣을 수 있다 — 끌어다 놓거나 단추를 누르면 대상·체크·
+ * 관측값·기준·설계 근거가 함께 들어간다. 사람이 다시 타이핑해 채워 넣게 만들지 않는다.
+ */
+function AlarmList({
+  alarms,
+  source,
+  doc,
+  onOpen,
+  onSend,
+}: {
+  alarms: Alarm[];
+  source: string;
+  doc: StatusDoc | null;
+  onOpen: (targetId: string) => void;
+  onSend: (text: string) => void;
+}) {
+  const crit = alarms.filter((a) => a.check.verdict === "CRIT").length;
+
+  return (
+    <section className="alarms" aria-label="알람">
+      <header className="alarms-head">
+        <span className="alarms-title">알람</span>
+        <span className="alarms-count">{alarms.length}</span>
+        {crit > 0 && <span className="alarms-crit">위험 {crit}</span>}
+        <span className="alarms-hint">끌어다 놓거나 「보내기」로 지시문에 넣습니다</span>
+      </header>
+
+      <ul className="alarms-list">
+        {alarms.map((a) => {
+          const text = alarmText(a, doc, source);
+          return (
+            <li key={a.id}>
+              <div
+                className={`alarm alarm--${a.check.verdict.toLowerCase()}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", text);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+              >
+                <button
+                  type="button"
+                  className="alarm-main"
+                  onClick={() => onOpen(a.target.id)}
+                  title="눌러서 이 대상의 점검 항목 전부 보기"
+                >
+                  <span className={`alarm-tag alarm-tag--${a.check.verdict.toLowerCase()}`}>
+                    {VERDICT_LABEL[a.check.verdict]}
+                  </span>
+                  <span className="alarm-target">{a.target.id}</span>
+                  <span className="alarm-name">{a.check.name}</span>
+                  <span className="alarm-value">
+                    {a.check.value === null || a.check.value === undefined
+                      ? "—"
+                      : String(a.check.value)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="alarm-send"
+                  onClick={() => onSend(text)}
+                  title="지시문 입력판으로 보내기"
+                >
+                  보내기
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
