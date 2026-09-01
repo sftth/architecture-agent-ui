@@ -30,48 +30,87 @@ function clip(text: string, limit: number): { shown: string; more: boolean } {
  * 짝을 눈으로 다시 맞춰야 했다. 여기서는 그 둘을 한 상자에 묶는다.
  * 긴 것은 잘라 두되 잘렸다는 사실을 감추지 않고, 손을 올리면 복사와 전체 보기가 나온다.
  */
+/** 접힌 줄에 세울 한 줄 요약. 도구 이름만으로는 무엇을 했는지 알 수 없다. */
+function gist(tool: ToolCall): string {
+  const source = tool.note || tool.input || "";
+  const line = source.split("\n").find((l) => l.trim()) ?? "";
+  return line.trim();
+}
+
 function ToolBlock({ tool }: { tool: ToolCall }) {
+  // 기본은 접힘. 한 run 에 도구 호출이 수백 건이라, 전부 펼쳐 두면 정작 읽어야 할
+  // 에이전트의 말이 그 사이에 묻힌다. 접힌 줄에도 무엇을 했는지는 남긴다 —
+  // 이름만 늘어놓으면 접은 것이 아니라 지운 것이 된다.
   const [open, setOpen] = useState(false);
+  const [full, setFull] = useState(false);
 
   const inPart = tool.input ? clip(tool.input, IN_LINES) : null;
   const outPart = tool.output ? clip(tool.output, OUT_LINES) : null;
   const truncated = Boolean(inPart?.more || outPart?.more);
+  const running = tool.output === null;
 
   return (
-    <div className={`tool${tool.failed ? " tool--failed" : ""}`}>
-      <div className="tool-head">
+    <div className={`tool${tool.failed ? " tool--failed" : ""}${open ? " tool--open" : ""}`}>
+      <button
+        type="button"
+        className="tool-head"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={`tool-caret${open ? " tool-caret--open" : ""}`} aria-hidden="true">
+          <CaretIcon />
+        </span>
         <strong className="tool-name">{tool.name}</strong>
-        {tool.note && <span className="tool-note">{tool.note}</span>}
-        {tool.output === null && <span className="tool-wait">실행 중</span>}
-      </div>
+        <span className="tool-gist">{gist(tool)}</span>
+        {running && <span className="tool-wait">실행 중</span>}
+        {tool.failed && <span className="tool-fail">실패</span>}
+      </button>
 
-      <div className="tool-pane">
-        {inPart && (
-          <div className="tool-line tool-line--in">
-            <span className="tool-tag">IN</span>
-            <pre onClick={() => setOpen(true)}>
-              <code>{inPart.shown}</code>
-            </pre>
-            <CopyButton text={tool.input} />
-          </div>
-        )}
-        {outPart && (
-          <div className="tool-line tool-line--out">
-            <span className="tool-tag">OUT</span>
-            <pre onClick={() => setOpen(true)}>
-              <code>{outPart.shown}</code>
-            </pre>
-            <CopyButton text={tool.output ?? ""} />
-          </div>
-        )}
-        {/* 마우스를 올렸을 때만 드러난다 — 평소에는 본문을 가리지 않게. */}
-        <button type="button" className="tool-expand" onClick={() => setOpen(true)}>
-          {truncated ? "전체 보기" : "크게 보기"}
-        </button>
-      </div>
+      {open && (
+        <div className="tool-pane">
+          {inPart && (
+            <div className="tool-line tool-line--in">
+              <span className="tool-tag">IN</span>
+              <pre>
+                <code>{inPart.shown}</code>
+              </pre>
+              <CopyButton text={tool.input} />
+            </div>
+          )}
+          {outPart && (
+            <div className="tool-line tool-line--out">
+              <span className="tool-tag">OUT</span>
+              <pre>
+                <code>{outPart.shown}</code>
+              </pre>
+              <CopyButton text={tool.output ?? ""} />
+            </div>
+          )}
+          {!inPart && !outPart && <p className="tool-empty">내용 없음</p>}
+          {/* 펼쳤을 때만 나온다 — 접힌 줄에 단추가 붙어 있으면 접은 의미가 없다. */}
+          <button type="button" className="tool-expand" onClick={() => setFull(true)}>
+            {truncated ? "상세 — 잘린 부분까지" : "상세"}
+          </button>
+        </div>
+      )}
 
-      {open && <Viewer tool={tool} onClose={() => setOpen(false)} />}
+      {full && <Viewer tool={tool} onClose={() => setFull(false)} />}
     </div>
+  );
+}
+
+function CaretIcon() {
+  return (
+    <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+      <path
+        d="M4.2 2.4L8 6l-3.8 3.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

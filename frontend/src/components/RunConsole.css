@@ -205,8 +205,36 @@
 }
 
 /* 에이전트가 쓴 글 한 덩어리. 도구 상자와 리듬을 맞춰 아래 여백만 준다. */
+/* 에이전트가 한 말. 내가 쓴 것이 오른쪽 말풍선이면 답도 말풍선이어야 대화로 읽힌다 —
+   한쪽만 풍선이면 질문만 대화이고 답은 출력물처럼 보인다. 방향과 색으로 가른다. */
 .say {
+  display: flex;
+  justify-content: flex-start;
   margin-bottom: var(--space-3);
+}
+
+.say-bubble {
+  max-width: 92%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 12px 12px 12px 3px;
+  background: var(--surface-raised, var(--ink-850));
+  border: 1px solid var(--tick-quiet);
+  overflow-wrap: anywhere;
+}
+
+.say-bubble .md > *:first-child { margin-top: 0; }
+.say-bubble .md > *:last-child { margin-bottom: 0; }
+
+/* 말풍선 안의 표는 스스로 스크롤한다 — 풍선이 가로로 늘어나면 판이 어긋난다. */
+.say-bubble table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* 사고 과정은 답이 아니라 혼잣말이라 풍선을 씌우지 않는다. */
+.say--dim {
+  display: block;
 }
 
 /* 사고 과정은 결과가 아니라 과정이라 한 단 죽여 둔다. */

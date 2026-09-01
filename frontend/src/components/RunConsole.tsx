@@ -3,6 +3,7 @@ import { LogEvent, RunSummary } from "../types";
 import { toBlocks } from "../transcript";
 import Markdown from "./Markdown";
 import ToolBlock from "./ToolBlock";
+import ReportCard from "./ReportCard";
 import "./RunConsole.css";
 
 function RunConsole({
@@ -152,10 +153,23 @@ function RunConsole({
             );
           }
           if (block.kind === "tool") return <ToolBlock key={block.key} tool={block.tool} />;
+          if (block.kind === "report") {
+            return <ReportCard key={block.key} text={block.text} report={block.report} />;
+          }
           if (block.kind === "md") {
+            // 사고 과정은 말풍선으로 세우지 않는다 — 그건 답이 아니라 혼잣말이다.
+            if (block.dim) {
+              return (
+                <div key={block.key} className="say say--dim">
+                  <Markdown text={block.text} />
+                </div>
+              );
+            }
             return (
-              <div key={block.key} className={`say${block.dim ? " say--dim" : ""}`}>
-                <Markdown text={block.text} />
+              <div key={block.key} className="say">
+                <div className="say-bubble">
+                  <Markdown text={block.text} />
+                </div>
               </div>
             );
           }

@@ -1,15 +1,72 @@
 /* 도구 호출 한 건 = IN/OUT 한 상자.
    평소에는 손잡이(복사·전체 보기)를 숨겨 둔다 — 늘 떠 있으면 정작 읽어야 할 명령을 가린다. */
 .tool {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 3px;
 }
 
+/* 펼친 것만 아래위로 숨을 준다 — 접힌 줄들은 목록처럼 붙어 있어야 훑기 좋다. */
+.tool--open {
+  margin: var(--space-3) 0;
+}
+
+/* 접힌 줄. 이 한 줄이 평소의 전부다 — 눌러야 속이 나온다. */
 .tool-head {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: 4px;
+  width: 100%;
   min-width: 0;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-head:hover {
+  background: var(--ink-850);
+}
+
+.tool--open .tool-head {
+  margin-bottom: 4px;
+  background: var(--ink-850);
+}
+
+.tool-caret {
+  flex: none;
+  align-self: center;
+  color: var(--paper-500);
+  transition: transform 0.15s ease;
+}
+
+.tool-caret--open { transform: rotate(90deg); }
+
+/* 접힌 줄에서 무엇을 했는지 알려 주는 한 줄. 이게 없으면 접은 것이 아니라 지운 것이다. */
+.tool-gist {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tool-fail {
+  flex: none;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--gate-rose);
+}
+
+.tool-empty {
+  margin: 0;
+  padding: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
 }
 
 .tool-name {
@@ -112,6 +169,7 @@
   transition: opacity 0.12s ease;
 }
 
+.tool-pane .tool-copy,
 .tool-line:hover .tool-copy,
 .tool-copy:focus-visible {
   opacity: 1;
@@ -146,13 +204,13 @@
   font-family: var(--font-body);
   font-size: var(--text-2xs);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
-.tool-pane:hover .tool-expand,
+.tool-expand:hover,
 .tool-expand:focus-visible {
-  opacity: 1;
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
 }
 
 .tool-expand:hover {

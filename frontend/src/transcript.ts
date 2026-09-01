@@ -1,10 +1,14 @@
 import { LogEvent } from "./types";
 import { ToolCall } from "./components/ToolBlock";
+import { RunReport, buildReport } from "./report";
 
 /** 화면에 그릴 한 덩어리. 로그 한 줄이 아니라 "읽을 수 있는 한 조각"이다. */
 export type Block =
   | { kind: "ask"; key: string; text: string; turn: number }
+  /** 에이전트가 한 말. dim 은 사고 과정이라 말풍선 대신 조용히 흘린다. */
   | { kind: "md"; key: string; text: string; dim: boolean }
+  /** 턴의 마지막 말 — 결과 보고로 세운다. report 는 로그에서 뽑은 실행 요약이다. */
+  | { kind: "report"; key: string; text: string; report: RunReport }
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "meta"; key: string; label: string; text: string; cls: string };
 
@@ -79,7 +83,26 @@ export function toBlocks(events: LogEvent[]): Block[] {
   const blocks: Block[] = [];
   const byToolId = new Map<string, ToolCall>();
 
-  for (const event of events) {
+  // 턴이 끝날 때, 그 턴의 마지막 말을 결과 보고로 승격한다. 승격에 쓸 실행 요약은
+  // 그 턴의 이벤트만으로 만든다 — 세션 전체를 넘기면 앞 턴에 한 일까지 이번 결과로
+  // 보고하게 된다.
+  let turnStart = 0;
+  const closeTurn = (end: number) => {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const block = blocks[i];
+      if (block.kind !== "md" || block.dim) continue;
+      blocks[i] = {
+        kind: "report",
+        key: block.key,
+        text: block.text,
+        report: buildReport(events.slice(turnStart, end)),
+      };
+      return;
+    }
+  };
+
+  for (let index = 0; index < events.length; index++) {
+    const event = events[index];
     const key = String(event.seq);
     if (isNoise(event.kind)) continue;
 
@@ -121,6 +144,8 @@ export function toBlocks(events: LogEvent[]): Block[] {
     // 사람이 한 말. 한 세션에 여러 번 물을 수 있으므로 맨 위에 한 번 세우는 것으로는
     // 부족하다 — 물은 자리에 그대로 서야 질문과 답이 짝지어 읽힌다.
     if (event.kind === "user") {
+      if (index > turnStart) closeTurn(index);
+      turnStart = index;
       const text = (event.text ?? "").trim();
       if (text) {
         const turn = Number((field(event.data, "turn") as number) ?? 0);
@@ -131,7 +156,14 @@ export function toBlocks(events: LogEvent[]): Block[] {
 
     if (event.kind === "assistant" || event.kind === "result") {
       const text = (event.text ?? "").trim();
-      if (text) blocks.push({ kind: "md", key, text, dim: false });
+      if (!text) continue;
+      // CLI 는 턴의 마지막 말을 assistant 로 한 번, result 로 또 한 번 낸다. 같은 글을
+      // 두 번 세우면 결과 보고 위에 그 내용이 통째로 한 번 더 붙는다.
+      const prev = blocks[blocks.length - 1];
+      if (event.kind === "result" && prev && prev.kind === "md" && prev.text === text) {
+        blocks.pop();
+      }
+      blocks.push({ kind: "md", key, text, dim: false });
       continue;
     }
 
@@ -145,5 +177,6 @@ export function toBlocks(events: LogEvent[]): Block[] {
     blocks.push({ kind: "meta", key, label: meta.label, text: event.text ?? "", cls: meta.cls });
   }
 
+  closeTurn(events.length);
   return blocks;
 }
