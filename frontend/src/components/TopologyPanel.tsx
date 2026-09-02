@@ -37,6 +37,26 @@ const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
 /**
+ * 이 값이 언제 것인가.
+ *
+ * 자동 갱신은 **결과 파일을 다시 읽는 것**이지 점검을 다시 돌리는 것이 아니다. 파일은
+ * agent 가 돌 때만 바뀌므로, 30초마다 읽어도 몇 시간째 같은 숫자일 수 있다 — 그게 정상인데
+ * 화면이 아무 말을 안 하면 "갱신이 안 되는 것"으로 읽힌다. 나이를 적어 그 오해를 막는다.
+ */
+function ageText(iso?: string, now = Date.now()): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const sec = Math.max(0, Math.round((now - t) / 1000));
+  if (sec < 60) return "방금";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  return `${Math.floor(hr / 24)}일 전`;
+}
+
+/**
  * 운영 단계의 WEB/WAS 토폴로지.
  *
  * middleware-status-impl 이 남긴 status-middleware.json 을 읽어 그린다. 화면이 대상을
@@ -64,6 +84,8 @@ export default function TopologyPanel({
   const [readAt, setReadAt] = useState<number | null>(null);
 
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) === "on");
+  // 나이 표시를 스스로 늙게 한다 — 다시 읽지 않아도 "몇 분 전"은 계속 흘러야 한다.
+  const [now, setNow] = useState(() => Date.now());
   const [every, setEvery] = useState(() => Number(localStorage.getItem(EVERY_KEY)) || 30);
 
   const path = ioPath("output/{project}/status/status-middleware.json", project);
@@ -87,6 +109,11 @@ export default function TopologyPanel({
 
   useEffect(() => load(), [load]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
   // 자동일 때만 되풀이한다. 읽는 것은 점검 결과 파일이고, 점검 자체를 다시 돌리지 않는다.
   useEffect(() => {
     if (!auto || !path) return;
@@ -105,6 +132,14 @@ export default function TopologyPanel({
   );
   const edges = useMemo(() => edgesOf(targets), [targets]);
   const alarms = useMemo(() => alarmsOf(doc), [doc]);
+
+  // 자동으로 몇 초마다 읽는데 결과가 그보다 훨씬 오래됐다면, 더 자주 읽어도 소용이 없다.
+  // 사람이 고른 주기를 잣대로 쓴다 — "이만큼 자주 보고 싶다"고 말한 값이기 때문이다.
+  const stale = useMemo(() => {
+    if (!auto || !doc?.generated_at) return false;
+    const t = Date.parse(doc.generated_at);
+    return Number.isFinite(t) && now - t > every * 10 * 1000;
+  }, [auto, doc, every, now]);
   const byId = useMemo(() => new Map(targets.map((t) => [t.id, t])), [targets]);
 
   return (
@@ -120,6 +155,20 @@ export default function TopologyPanel({
           {doc?.generated_at
             ? `${new Date(doc.generated_at).toLocaleString("ko-KR", { hour12: false })} 점검`
             : "점검 결과 없음"}
+          {/* 이 숫자가 언제 것인지 — 없으면 안 변하는 값이 고장으로 읽힌다. */}
+          {doc?.generated_at && (
+            <span
+              className={`topo-age${stale ? " topo-age--stale" : ""}`}
+              title={
+                stale
+                  ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
+                    "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
+                  : undefined
+              }
+            >
+              {" "}· {ageText(doc.generated_at, now)}
+            </span>
+          )}
           {doc?.run?.env && ` · ${doc.run.env}`}
           {doc?.run?.mode && ` · ${doc.run.mode}`}
         </span>
@@ -206,7 +255,12 @@ function PollControl({
 }) {
   return (
     <div className="poll">
-      <div className="poll-toggle" role="group" aria-label="갱신 방식">
+      <div
+        className="poll-toggle"
+        role="group"
+        aria-label="갱신 방식"
+        title="결과 파일을 다시 읽는 주기입니다. 점검을 다시 돌리는 것은 「지금 점검」입니다."
+      >
         <button
           type="button"
           className={`poll-seg${!auto ? " poll-seg--on" : ""}`}
@@ -235,7 +289,7 @@ function PollControl({
           >
             {INTERVALS.map((i) => (
               <option key={i.sec} value={i.sec}>
-                {i.label}마다
+                {i.label}마다 다시 읽기
               </option>
             ))}
           </select>
@@ -508,7 +562,7 @@ function Node({
             {ports.map((p) => (
               <span key={`${p.kind}${p.port}`} className={`rack-port rack-port--${low(p.verdict)}`}>
                 {p.kind}:{p.port}
-                {p.conns !== null && <em>{p.conns}</em>}
+                {p.conns !== null && <em title="현재 커넥션 수">{p.conns}</em>}
               </span>
             ))}
           </span>

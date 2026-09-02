@@ -475,8 +475,11 @@
   color: var(--paper-300);
 }
 
+/* 커넥션 수. 포트 번호에 바로 붙으면 한 숫자로 읽힌다 — 선으로 가른다. */
 .rack-port em {
-  margin-left: 4px;
+  margin-left: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--tick-quiet);
   font-style: normal;
   color: var(--paper-500);
 }
@@ -968,4 +971,14 @@
 .alarm-send:hover {
   border-color: var(--line-cyan);
   color: var(--paper-100);
+}
+
+/* 데이터 나이. 시각 옆에 붙어 "이게 언제 것인지"를 말한다. */
+.topo-age {
+  color: var(--paper-300);
+}
+
+/* 고른 주기보다 훨씬 오래된 결과. 더 자주 읽어도 안 바뀐다는 뜻이라 눈에 띄어야 한다. */
+.topo-age--stale {
+  color: var(--signal-amber);
 }
