@@ -120,13 +120,19 @@
   cursor: pointer;
 }
 
-/* 자동으로 돌고 있다는 신호. 멈춰 있는 화면과 구별되어야 한다. */
+/* 자동으로 돌고 있다는 신호. 늘 뛰지 않는다 — 실제로 읽은 순간에만 한 번 밝아진다.
+   (밝히는 쪽은 .poll-live--read 를 잠깐 붙이는 컴포넌트다.) */
 .poll-live {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  background: var(--line-cyan-dim);
+  transition: background 0.2s ease, box-shadow 0.25s ease;
+}
+
+.poll-live--read {
   background: var(--line-cyan);
-  animation: topo-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(90, 200, 214, 0.2);
 }
 
 .poll-now {
@@ -246,38 +252,54 @@
   stroke-width: 1.2;
 }
 
-/* 닿는 선 — 점이 흐른다. */
+/* 닿는 선 — 점이 흐른다. 움직임이 곧 "트래픽이 지나간다"는 뜻이다. */
 .wire--up {
   color: var(--line-cyan);
 }
 
 .wire--up .wire-path {
-  opacity: 0.45;
+  opacity: 0.4;
   stroke-dasharray: 3 5;
 }
 
 .wire-dot {
-  fill: var(--line-cyan);
+  fill: currentColor;
+  opacity: 0.75;
 }
 
-/* 닿지 않는 선 — 흐르지 않는다. 색과 함께 "끊겼다"가 형태로도 보여야 한다. */
+/* 눌린 경로는 신호가 느리게 간다(주기는 마크업에서). 색도 함께 낮춘다. */
+.wire-dot--slow {
+  fill: var(--signal-amber);
+  opacity: 0.85;
+}
+
+/*
+ * 닿지 않는 선 — 흐르지 않는다.
+ *
+ * 전에는 붉게 계속 깜빡였다. 그러면 몇 분 뒤엔 아무도 안 보고, 진짜 상태 변화가 와도
+ * 묻힌다. 여기서는 **멈춰 있는 것 자체가 신호**다 — 신호가 사라지고, 선이 굵고 또렷한
+ * 파선으로 남는다. 움직이는 것이 정상이므로 안 움직이는 것이 눈에 띈다.
+ */
 .wire--down {
   color: var(--gate-rose);
 }
 
 .wire--down .wire-path {
-  opacity: 0.9;
-  stroke-dasharray: 7 4;
-  animation: wire-warn 1.2s ease-in-out infinite;
+  opacity: 0.85;
+  stroke-width: 1.6;
+  stroke-dasharray: 6 5;
 }
 
-@keyframes wire-warn {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 0.32; }
+/* 고른 대상에 걸린 경로만 밝힌다. 애니메이션보다 이 대비가 관계를 이해시킨다. */
+.wire {
+  transition: opacity 0.18s ease;
 }
+
+.wire--on { opacity: 1; }
+.wire--off { opacity: 0.18; }
 
 @media (prefers-reduced-motion: reduce) {
-  .wire--down .wire-path { animation: none; }
+  /* 흐름은 끄되 관계와 상태는 그대로 읽힌다 — 선의 색과 굵기가 남는다. */
   .wire-dot { display: none; }
 }
 
@@ -330,14 +352,16 @@
   border-radius: 50%;
 }
 
-.rack-dot--ok { background: var(--gate-mint); }
-.rack-dot--warn {
-  background: var(--signal-amber);
-  animation: topo-pulse 1.4s ease-in-out infinite;
-}
+/* 상태점은 쉬는 동안 움직이지 않는다. 색과 대비만으로 등급을 말하고, 움직임은
+   상태가 실제로 바뀌는 순간에만 쓴다(.rack--changed). */
+.rack-dot { transition: background 0.2s ease, box-shadow 0.2s ease; }
+
+.rack-dot--ok { background: var(--gate-mint-dim); }
+.rack-dot--warn { background: var(--signal-amber); }
 .rack-dot--crit {
   background: var(--gate-rose);
-  animation: topo-pulse 1s ease-in-out infinite;
+  /* 위험은 깜빡이지 않고 **더 또렷하게** 앉아 있는다. */
+  box-shadow: 0 0 0 3px rgba(225, 102, 124, 0.18);
 }
 .rack-dot--info,
 .rack-dot--na { background: var(--paper-500); }
@@ -435,7 +459,7 @@
 .rack-load-fill {
   display: block;
   height: 100%;
-  transition: width 0.5s ease;
+  transition: width 0.32s ease;
 }
 
 /* 정상 부하는 조용해야 한다 — 초록으로 칠하면 평시에 온 화면이 알록달록해진다. */
@@ -509,19 +533,31 @@
 
 /* ── 롤오버 카드 ────────────────────────────────────────
    기본 title 대신. 값 옆에 기준이 서야 "이게 높은 건가"에 답이 된다. */
+/* 도해 아래 제자리에 서는 인스펙터. 떠 있는 판이 아니다 —
+   강조해 둔 경로를 덮으면 강조한 의미가 없다. */
 .hovercard {
-  position: fixed;
-  z-index: 70;
+  flex: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: var(--space-3);
-  background: var(--ink-900);
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
+  gap: 5px;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-850);
+  border-left: 3px solid var(--line-cyan-dim);
   pointer-events: none;
 }
+
+/* 표는 가로로 눕는다 — 세로로 길면 도해를 아래로 밀어낸다. */
+.hovercard-table tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0 var(--space-3);
+}
+
+.hovercard-table thead { display: none; }
+.hovercard-table tbody tr { display: flex; align-items: baseline; gap: var(--space-2); }
+.hovercard-table tbody th { flex: none; width: 7em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hovercard-table tbody td:last-child { display: none; }
 
 .hovercard-head {
   display: flex;
@@ -1093,9 +1129,18 @@
   text-overflow: ellipsis;
 }
 
-/* 포트로 되짚은 선 — 실선보다 흐리게 둔다. 확인한 것과 추정한 것이 같아 보이면 안 된다. */
-.wire--guess .wire-path {
+/*
+ * 포트로 되짚은 선 — 확인한 것과 추정한 것이 같아 보이면 안 된다.
+ *
+ * 다만 흐리게 하는 것은 **정상인 선까지만**이다. 끝점이 불확실하다고 해서 "여기 트래픽이
+ * 끊겼다"를 흐리게 만들면, 불확실성이 고장을 가리게 된다. 못 닿는 선은 추정이어도
+ * 제 무게로 남고, 촘촘한 파선으로 "추정"만 말한다.
+ */
+.wire--guess.wire--up .wire-path {
   opacity: 0.22;
+}
+
+.wire--guess .wire-path {
   stroke-dasharray: 2 6;
 }
 
@@ -1104,6 +1149,67 @@
 .topo-guess {
   flex: none;
   margin: var(--space-2) 0 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+/* ── 노드의 생기 ──────────────────────────────────────────
+   전부 조용히 있다가, 무언가 일어난 순간에만 짧게 반응한다. */
+
+/* 방금 다시 읽었다. 테두리를 번쩍이지 않고 면을 한 번 스치고 지나간다. */
+.rack--updated {
+  animation: rack-read 620ms ease-out;
+}
+
+@keyframes rack-read {
+  0% { background: var(--ink-800); }
+  100% { background: var(--ink-850); }
+}
+
+/* 판정이 실제로 바뀌었다. 한 번만 끌고 그대로 앉는다 — 무한 반복하지 않는다. */
+.rack--changed .rack-dot {
+  animation: rack-change 900ms ease-out;
+}
+
+@keyframes rack-change {
+  0% { transform: scale(1); }
+  22% { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+
+/* 고른 대상과 무관한 자리는 뒤로 물린다. 지우지는 않는다 — 값은 계속 읽혀야 한다. */
+.rack {
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.18s ease;
+}
+
+.rack--faded { opacity: 0.4; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rack--updated,
+  .rack--changed .rack-dot {
+    animation: none;
+  }
+}
+
+/* 인스펙터가 설 자리. 늘 잡아 둔다 — 손을 올릴 때마다 도해가 밀려 올라가면
+   관계를 보라고 만든 상호작용이 스스로 방해가 된다. */
+.hoverslot {
+  flex: none;
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.hoverslot-idle {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--tick-quiet);
+  background: var(--ink-850);
   font-family: var(--font-body);
   font-size: var(--text-2xs);
   color: var(--paper-500);

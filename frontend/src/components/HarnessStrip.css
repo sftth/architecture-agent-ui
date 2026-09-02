@@ -189,10 +189,10 @@ button.agent-line--live:hover {
   background: rgba(89, 201, 165, 0.055);
   border-left-color: var(--gate-mint);
   font-weight: 600;
-  text-shadow: 0 0 12px rgba(89, 201, 165, 0.28);
 }
 
-.agent-line--live svg { opacity: 1; filter: drop-shadow(0 0 4px rgba(89, 201, 165, 0.35)); }
+/* 빛 번짐을 걷어냈다 — 운영 콘솔이지 게임 HUD 가 아니다. 색과 굵기로 충분하다. */
+.agent-line--live svg { opacity: 1; }
 
 .agent-line em {
   margin-left: auto;
@@ -292,7 +292,8 @@ button.agent-line--live:hover {
   margin-left: -2.5px;
   border-radius: 50%;
   background: var(--signal-amber);
-  animation: tree-travel 1.1s linear infinite;
+  /* 위임이 실제로 도는 동안에만 켜진다. 호흡을 늦춰 시선을 뺏지 않게 한다. */
+  animation: tree-travel 2.6s linear infinite;
 }
 
 @keyframes tree-travel {
@@ -370,14 +371,15 @@ button.agent-line--live:hover {
 .tnode--eval .tnode-dot { color: var(--role-eval); }
 .tnode--common .tnode-dot { color: var(--line-cyan); }
 
+/* 도는 중임을 알리되 깜빡이지 않는다. 테두리가 아주 느리게 번졌다 사라지는 정도. */
 .tnode-dot--live {
   color: var(--signal-amber);
   opacity: 1;
-  animation: tnode-pulse 1.2s ease-in-out infinite;
+  animation: tnode-pulse 2.8s ease-in-out infinite;
 }
 
 @keyframes tnode-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 166, 90, 0.5); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 166, 90, 0.32); }
   50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0); }
 }
 
@@ -478,12 +480,12 @@ button.agent-line--live:hover {
   height: 6px;
   border-radius: 50%;
   background: var(--signal-amber);
-  animation: tchip-pulse 1.3s ease-in-out infinite;
+  animation: tchip-pulse 2.8s ease-in-out infinite;
 }
 
 @keyframes tchip-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(242, 166, 90, 0.45); }
-  50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(242, 166, 90, 0); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(242, 166, 90, 0.32); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(242, 166, 90, 0); }
 }
 
 /* ── 전체 목록 창 ────────────────────────────────────── */
@@ -671,4 +673,13 @@ button.agent-line--live:hover {
 @keyframes harness-follow-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* 움직임을 줄여 달라고 한 사람에게는 줄인다 — 무엇이 도는지는 색과 글자로 남는다. */
+@media (prefers-reduced-motion: reduce) {
+  .tree-travel,
+  .tnode-dot--live,
+  .tchip-live {
+    animation: none;
+  }
 }

@@ -20,6 +20,7 @@ import {
   summaryRows,
   text,
 } from "./topology";
+import { useCountUp, useFlash, usePrefersReducedMotion, usePrev } from "../motion";
 import "./TopologyPanel.css";
 
 /** 자동 갱신 간격. */
@@ -33,6 +34,15 @@ const INTERVALS = [
 const AUTO_KEY = "architecture-agent-ui:topo-auto";
 const EVERY_KEY = "architecture-agent-ui:topo-every";
 const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
+
+/**
+ * 신호를 붙일 간선 수의 상한.
+ *
+ * 흐르는 점 하나가 SMIL 애니메이션 하나다. 대상이 늘면 간선은 곱으로 늘어나므로,
+ * 어느 선을 넘으면 선만 긋고 흐름은 접는다 — 모니터링 화면이 애니메이션 때문에
+ * 느려지는 것이 가장 나쁘다.
+ */
+const FLOW_EDGE_CAP = 24;
 
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
@@ -82,6 +92,8 @@ export default function TopologyPanel({
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [readAt, setReadAt] = useState<number | null>(null);
+  // 몇 번째 읽기인가. 값이 바뀌는 순간이 곧 "방금 갱신됐다"는 신호다.
+  const [reads, setReads] = useState(0);
 
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) === "on");
   // 나이 표시를 스스로 늙게 한다 — 다시 읽지 않아도 "몇 분 전"은 계속 흘러야 한다.
@@ -100,6 +112,8 @@ export default function TopologyPanel({
         setDoc(file.text ? (JSON.parse(file.text) as StatusDoc) : null);
         setError(null);
         setReadAt(Date.now());
+        // 다시 읽었다는 사실 자체를 화면이 한 번 알린다(상시 맥박이 아니라).
+        setReads((n) => n + 1);
       })
       .catch((e) => {
         setDoc(null);
@@ -141,6 +155,9 @@ export default function TopologyPanel({
     return Number.isFinite(t) && now - t > every * 10 * 1000;
   }, [auto, doc, every, now]);
   const byId = useMemo(() => new Map(targets.map((t) => [t.id, t])), [targets]);
+  // 손이 올라간 곳이 우선, 없으면 열어 둔 대상. 관련 경로만 밝히고 나머지는 죽인다 —
+  // 애니메이션보다 이 상호작용이 관계를 이해시키는 데 크다.
+  const activeId = hover?.id ?? picked ?? null;
 
   return (
     <section className="topo">
@@ -187,6 +204,7 @@ export default function TopologyPanel({
             auto={auto}
             every={every}
             readAt={readAt}
+            reads={reads}
             onAuto={(next) => {
               setAuto(next);
               localStorage.setItem(AUTO_KEY, next ? "on" : "off");
@@ -218,7 +236,15 @@ export default function TopologyPanel({
 
       {targets.length > 0 && (
         <>
-          <Tiers webs={webs} wases={wases} edges={edges} onPick={setPicked} onHover={setHover} />
+          <Tiers
+            webs={webs}
+            wases={wases}
+            edges={edges}
+            activeId={activeId}
+            reads={reads}
+            onPick={setPicked}
+            onHover={setHover}
+          />
           {/* 되짚은 선이 있으면 도해 바로 밑에서 밝힌다 — 그리지 못한 것보다 낫지만,
               확인한 것처럼 보이면 안 된다. */}
           {edges.some((e) => e.inferred) && (
@@ -227,6 +253,18 @@ export default function TopologyPanel({
             </p>
           )}
         </>
+      )}
+
+      {/* 손이 올라간 대상의 요약. 전에는 노드 옆에 떠서 **강조해 놓은 그 경로를 덮었다** —
+          관계를 보라고 밝혀 놓고 그 위에 판을 얹은 셈이었다. 도해 아래 제자리에 둔다. */}
+      {targets.length > 0 && (
+        <div className="hoverslot">
+          {hover && byId.get(hover.id) ? (
+            <HoverCard target={byId.get(hover.id)!} edges={edges} />
+          ) : (
+            <p className="hoverslot-idle">대상에 손을 올리면 연결된 경로와 요약이 여기 나옵니다</p>
+          )}
+        </div>
       )}
 
       {alarms.length > 0 && (
@@ -239,9 +277,7 @@ export default function TopologyPanel({
         />
       )}
 
-      {hover && byId.get(hover.id) && (
-        <HoverCard target={byId.get(hover.id)!} x={hover.x} y={hover.y} edges={edges} />
-      )}
+
 
       {picked && byId.get(picked) && (
         <Detail target={byId.get(picked)!} edges={edges} onClose={() => setPicked(null)} />
@@ -261,6 +297,7 @@ function PollControl({
   auto,
   every,
   readAt,
+  reads,
   onAuto,
   onEvery,
   onNow,
@@ -268,10 +305,14 @@ function PollControl({
   auto: boolean;
   every: number;
   readAt: number | null;
+  /** 읽기 횟수. 바뀌는 순간이 곧 "지금 읽었다" 이다. */
+  reads: number;
   onAuto: (next: boolean) => void;
   onEvery: (next: number) => void;
   onNow: () => void;
 }) {
+  // 늘 뛰는 맥박 대신, 실제로 읽은 순간에만 한 번 밝아진다.
+  const read = useFlash(reads, 520);
   return (
     <div className="poll">
       <div
@@ -312,7 +353,7 @@ function PollControl({
               </option>
             ))}
           </select>
-          <span className="poll-live" aria-hidden="true" />
+          <span className={`poll-live${read ? " poll-live--read" : ""}`} aria-hidden="true" />
         </span>
       ) : (
         <button type="button" className="poll-now" onClick={onNow}>
@@ -337,15 +378,22 @@ function Tiers({
   webs,
   wases,
   edges,
+  activeId,
+  reads,
   onPick,
   onHover,
 }: {
   webs: StatusTarget[];
   wases: StatusTarget[];
   edges: Edge[];
+  /** 손이 올라갔거나 열어 둔 대상. 그 대상에 걸린 경로만 밝힌다. */
+  activeId: string | null;
+  /** 몇 번째 읽기인가. 바뀌면 "방금 갱신됐다"는 뜻이다. */
+  reads: number;
   onPick: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
+  const reduced = usePrefersReducedMotion();
   const wrapRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
   const [boxes, setBoxes] = useState<Record<string, { x: number; y: number; w: number; h: number }>>(
@@ -440,7 +488,23 @@ function Tiers({
       <div className="topo-nodes">
         {list.length === 0 && <span className="topo-none">없음</span>}
         {list.map((t) => (
-          <Node key={t.id} target={t} register={register} onPick={onPick} onHover={onHover} />
+          <Node
+            key={t.id}
+            target={t}
+            register={register}
+            reads={reads}
+            faded={
+              activeId !== null &&
+              activeId !== t.id &&
+              !edges.some(
+                (e) =>
+                  (e.from === activeId && e.to === t.id) ||
+                  (e.to === activeId && e.from === t.id),
+              )
+            }
+            onPick={onPick}
+            onHover={onHover}
+          />
         ))}
       </div>
     </div>
@@ -473,23 +537,41 @@ function Tiers({
               />
             </marker>
           </defs>
-          {lines.map(({ e, d }, i) => (
-            <g
-            key={`${e.from}-${e.to}-${e.port}`}
-            className={`wire wire--${e.ok ? "up" : "down"}${e.inferred ? " wire--guess" : ""}`}
-          >
-              <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
-              {/* 닿는 선에만 흐름을 얹는다. 닿지 않는 선이 흐르면 그림이 거짓말을 한다. */}
-              {e.ok &&
-                [0, 1, 2].map((k) => (
-                  <circle key={k} className="wire-dot" r="2.6">
-                    <animateMotion dur="2.4s" repeatCount="indefinite" begin={`${k * 0.8}s`}>
-                      <mpath href={`#wire-${i}`} />
-                    </animateMotion>
-                  </circle>
-                ))}
-            </g>
-          ))}
+          {lines.map(({ e, d }, i) => {
+            // 흐름의 **속도**가 뜻을 진다.
+            //   움직인다 = 트래픽 정상 · 느리다 = 눌렸다 · 멈췄다 = 못 닿는다
+            // 그래서 못 닿는 선은 붉게 깜빡이지 않는다. 멈춰 있는 것이 곧 신호다.
+            const flow = e.ok ? (e.verdict === "WARN" ? "slow" : "on") : "off";
+            const related = activeId === null || e.from === activeId || e.to === activeId;
+            return (
+              <g
+                key={`${e.from}-${e.to}-${e.port}`}
+                className={
+                  `wire wire--${e.ok ? "up" : "down"}` +
+                  `${e.inferred ? " wire--guess" : ""}` +
+                  `${activeId !== null ? (related ? " wire--on" : " wire--off") : ""}`
+                }
+              >
+                <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
+                {/* 신호는 한 선에 하나. 고른 경로에만 하나 더 붙여 "지금 이 길"임을 말한다.
+                    간선이 많아지면 통째로 접는다 — 화면이 느려지는 것이 가장 나쁘다. */}
+                {flow !== "off" &&
+                  !reduced &&
+                  lines.length <= FLOW_EDGE_CAP &&
+                  (related && activeId !== null ? [0, 1] : [0]).map((k) => (
+                    <circle key={k} className={`wire-dot wire-dot--${flow}`} r="2.4">
+                      <animateMotion
+                        dur={flow === "slow" ? "5.6s" : "3.2s"}
+                        repeatCount="indefinite"
+                        begin={`${k * 1.6}s`}
+                      >
+                        <mpath href={`#wire-${i}`} />
+                      </animateMotion>
+                    </circle>
+                  ))}
+              </g>
+            );
+          })}
         </svg>
 
         {row(webs, "WEB")}
@@ -503,15 +585,27 @@ function Tiers({
 function Node({
   target,
   register,
+  reads,
+  faded,
   onPick,
   onHover,
 }: {
   target: StatusTarget;
   register: (id: string, el: HTMLElement | null) => void;
+  /** 읽기 횟수. 바뀌면 이 대상이 방금 갱신됐다는 뜻이다. */
+  reads: number;
+  /** 고른 대상과 무관한 자리인가. 관련 경로만 남기고 뒤로 물린다. */
+  faded: boolean;
   onPick: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
   const v = low(target.verdict);
+  // 다시 읽었다는 사실을 한 번만 알린다 — 상시 맥박이 아니다.
+  const updated = useFlash(reads, 620);
+  // 판정이 **실제로 바뀐** 순간에만 주의를 끈다. 위험한 상태를 계속 깜빡이게 두면
+  // 몇 분 뒤에는 아무도 안 본다.
+  const before = usePrev(target.verdict);
+  const changed = useFlash(target.verdict, 900) && before !== undefined;
   const bad = badChecks(target);
   const gauge = gaugeOf(target);
   const ports = portsOf(target);
@@ -527,7 +621,12 @@ function Node({
     <button
       type="button"
       ref={(el) => register(target.id, el)}
-      className={`rack rack--${v}`}
+      className={
+        `rack rack--${v}` +
+        `${updated ? " rack--updated" : ""}` +
+        `${changed ? " rack--changed" : ""}` +
+        `${faded ? " rack--faded" : ""}`
+      }
       onClick={() => onPick(target.id)}
       onMouseEnter={(e) => enter(e.currentTarget)}
       onMouseLeave={() => onHover(null)}
@@ -597,11 +696,25 @@ function Node({
   );
 }
 
+/**
+ * 지표 한 줄.
+ *
+ * 5.8 → 6.1 이 한 프레임에 갈리면 바뀐 줄도 모른다. 숫자면 짧게 굴리고, 숫자가 아니면
+ * (기동·LISTEN 같은 말) 그냥 바꾼다 — 말은 굴릴 것이 없다.
+ */
 function Metric({ label, value, verdict }: { label: string; value: string; verdict?: Verdict }) {
+  // 값에 붙은 단위(%)는 떼어 두고 숫자만 굴린 뒤 다시 붙인다.
+  const m = /^(-?\d+(?:\.\d+)?)(\D*)$/.exec(value.trim());
+  const n = m ? Number(m[1]) : null;
+  const decimals = m && m[1].includes(".") ? m[1].split(".")[1].length : 0;
+  const rolled = useCountUp(n);
+  const shown =
+    m && rolled !== null ? `${rolled.toFixed(decimals)}${m[2]}` : value;
+
   return (
     <span className="rack-metric">
       <span className="rack-metric-label">{label}</span>
-      <span className={`rack-metric-value rack-metric-value--${low(verdict)}`}>{value}</span>
+      <span className={`rack-metric-value rack-metric-value--${low(verdict)}`}>{shown}</span>
     </span>
   );
 }
@@ -613,28 +726,14 @@ function Metric({ label, value, verdict }: { label: string; value: string; verdi
  * 닮지 않았고, 값과 기준이 나란히 서지 않아 "이게 높은 건가"를 알 수 없었다.
  * 표로 세우면 값 옆에 기준이 오고, 판정은 그 둘을 읽은 결과로 붙는다.
  */
-function HoverCard({
-  target,
-  x,
-  y,
-  edges,
-}: {
-  target: StatusTarget;
-  x: number;
-  y: number;
-  edges: Edge[];
-}) {
-  const rows = summaryRows(target);
+function HoverCard({ target, edges }: { target: StatusTarget; edges: Edge[] }) {
+  // 자리에 맞게 앞쪽만. 전부는 눌러서 여는 상세에 있다.
+  const rows = summaryRows(target).slice(0, 6);
   const out = edges.filter((e) => e.from === target.id);
   const inc = edges.filter((e) => e.to === target.id);
 
-  // 오른쪽으로 넘치면 왼쪽에 붙인다.
-  const width = 330;
-  const left = x + 12 + width > window.innerWidth ? Math.max(8, x - width - 24) : x + 12;
-  const top = Math.max(8, Math.min(y, window.innerHeight - 360));
-
   return (
-    <div className="hovercard" style={{ left, top, width }} role="tooltip">
+    <div className="hovercard" role="tooltip">
       <div className="hovercard-head">
         <span className={`rack-dot rack-dot--${low(target.verdict)}`} aria-hidden="true" />
         <strong>{target.id}</strong>
