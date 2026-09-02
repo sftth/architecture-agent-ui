@@ -57,8 +57,9 @@
 }
 
 .console-prompt {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
+  font-weight: 600;
   color: var(--paper-500);
   white-space: nowrap;
   overflow: hidden;
@@ -111,13 +112,13 @@
   color: var(--paper-500);
 }
 
+/* 상태어는 사람 말이라 본문 글꼴이다. mono 는 값·경로·명령에만 쓴다. */
 .console-final {
   margin-left: auto;
   flex-shrink: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font-weight: 600;
 }
 .console-final--running { color: var(--signal-amber); }
 .console-final--success { color: var(--gate-mint); }

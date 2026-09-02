@@ -129,44 +129,97 @@ export interface Edge {
   ok: boolean;
   verdict: Verdict;
   label: string;
+  /** 주소로 상대를 특정하지 못해 포트로 되짚은 선인가. 화면이 그 사실을 밝힌다. */
+  inferred: boolean;
 }
 
 const UP_RE = /\(([\d.]+):(\d+)\)/;
 
 /**
- * 주소만으로는 대상을 못 고른다 — web 과 was 가 한 host 에 같이 사는 구성이 흔하고,
- * 그러면 같은 IP 를 가진 대상이 둘이다. 그 포트를 실제로 물고 있는 쪽이 상대다.
+ * 주소로 상대를 특정한다.
+ *
+ * 주소만으로는 부족하다 — web 과 was 가 한 host 에 같이 사는 구성이 흔하고, 그러면 같은
+ * IP 를 가진 대상이 둘이다. 그 포트를 실제로 물고 있는 쪽이 상대다.
  */
 function targetAt(all: StatusTarget[], host: string, port: number): StatusTarget | null {
   return (
     all.find(
-      (t) =>
-        (t.private_ip === host || t.ip === host) &&
-        portsOf(t).some((p) => p.port === port),
+      (t) => (t.private_ip === host || t.ip === host) && portsOf(t).some((p) => p.port === port),
     ) ?? null
   );
 }
 
+/** 그 포트를 물고 있는 대상 전부. 주소로 못 고를 때의 차선이다. */
+function targetsOnPort(all: StatusTarget[], port: number): StatusTarget[] {
+  return all.filter((t) => portsOf(t).some((p) => p.port === port));
+}
+
+/**
+ * 층 사이의 선.
+ *
+ * A05 는 "업스트림 도달성 (172.31.45.153:8109)" 처럼 **사설** 주소를 적는데, 대상 쪽에
+ * 그 주소가 늘 있는 것은 아니다(산출물에서 private_ip 가 빠진 판이 있었고, 그러면 호스트가
+ * 어디에도 안 맞아 선이 조용히 0개가 됐다 — 관계가 사라진 것을 화면이 "관계 없음"으로
+ * 보여 주는 것이 가장 나쁜 실패다).
+ *
+ * 그래서 두 단으로 간다. 주소가 맞으면 그대로 잇고, 안 맞으면 **그 포트를 물고 있는
+ * 대상**으로 되짚는다. 되짚은 선은 inferred 로 표시해 화면이 추정임을 밝힌다.
+ */
 export function edgesOf(all: StatusTarget[]): Edge[] {
   const edges: Edge[] = [];
+  const seen = new Set<string>();
+
+  const add = (
+    from: string,
+    to: string,
+    port: number,
+    c: StatusCheck,
+    inferred: boolean,
+    m1: string,
+  ) => {
+    const key = `${from}>${to}:${port}`;
+    const prev = edges.find((e) => `${e.from}>${e.to}:${e.port}` === key);
+    if (prev) {
+      // 같은 짝이 여러 A05 에서 나오면 가장 나쁜 판정을 남긴다 — 하나라도 못 닿으면
+      // 그 경로는 믿을 수 없다.
+      if (rankOf(c.verdict) > rankOf(prev.verdict)) {
+        prev.verdict = c.verdict;
+        prev.ok = c.verdict === "OK";
+      }
+      return;
+    }
+    seen.add(key);
+    edges.push({
+      from,
+      to,
+      port,
+      ok: c.verdict === "OK",
+      verdict: c.verdict,
+      label: inferred ? `추정 :${port}` : `${m1}:${port}`,
+      inferred,
+    });
+  };
+
   for (const from of all) {
     for (const c of pickAll(from, "A05")) {
       const m = UP_RE.exec(c.name);
       if (!m) continue;
       const port = Number(m[2]);
-      const to = targetAt(all, m[1], port);
-      if (!to || to.id === from.id) continue;
-      edges.push({
-        from: from.id,
-        to: to.id,
-        port,
-        ok: c.verdict === "OK",
-        verdict: c.verdict,
-        label: `${m[1]}:${port}`,
-      });
+      const exact = targetAt(all, m[1], port);
+      if (exact && exact.id !== from.id) {
+        add(from.id, exact.id, port, c, false, m[1]);
+        continue;
+      }
+      for (const t of targetsOnPort(all, port)) {
+        if (t.id !== from.id) add(from.id, t.id, port, c, true, m[1]);
+      }
     }
   }
   return edges;
+}
+
+function rankOf(v: Verdict): number {
+  return v === "CRIT" ? 3 : v === "WARN" ? 2 : v === "NA" ? 1 : 0;
 }
 
 /**

@@ -6,6 +6,14 @@ import ToolBlock from "./ToolBlock";
 import ReportCard from "./ReportCard";
 import "./RunConsole.css";
 
+/** 실행 상태를 사람 말로. 화면의 다른 상태 표시와 같은 어휘를 쓴다. */
+const RUN_STATE: Record<string, string> = {
+  success: "완료",
+  error: "실패",
+  stopped: "중지됨",
+  running: "실행 중",
+};
+
 function RunConsole({
   run,
   events,
@@ -123,12 +131,17 @@ function RunConsole({
         </div>
         {/* 중지는 아래 입력판의 보내기 단추가 겸한다 — 보내는 것과 멈추는 것을
             두 자리에 나눠 두면 어느 쪽이 지금 살아 있는 단추인지 매번 찾아야 한다. */}
+        {/* 상태는 화면 전체에서 한 가지 말투로 말한다. 전에는 여기만 `SUCCESS (EXIT 0)`
+            처럼 mono 대문자였고, 토폴로지는 「위험」 알약, 노드는 숫자 배지였다 —
+            같은 뜻을 세 모양으로 말하면 셋 다 약해진다. exit 코드는 실패했을 때만 쓴다. */}
         {run.status === "running" ? (
           <span className="console-final console-final--running">실행 중</span>
         ) : (
           <span className={`console-final console-final--${run.status}`}>
-            {run.status}
-            {run.exit_code !== null && run.exit_code !== undefined ? ` (exit ${run.exit_code})` : ""}
+            {RUN_STATE[run.status] ?? run.status}
+            {run.status === "error" && run.exit_code !== null && run.exit_code !== undefined
+              ? ` · exit ${run.exit_code}`
+              : ""}
           </span>
         )}
         {head}

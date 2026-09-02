@@ -11,19 +11,36 @@
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
+/* 두 줄. 위는 "지금 어떤가", 아래는 "무엇을 할 수 있나".
+   한 줄에 몰면 좁은 폭에서 제목부터 짜부라진다. */
 .topo-head {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--space-2);
+}
+
+.topo-head-row {
+  display: flex;
+  align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  min-width: 0;
+}
+
+.topo-head-row--acts {
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .topo-title {
+  flex: none;
   margin: 0;
   font-family: var(--font-body);
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
   font-weight: 600;
+  /* 절대 줄바꿈되지 않는다 — 여기가 무너져서 글자가 세로로 떨어졌다. */
+  white-space: nowrap;
 }
 
 /* 종합 판정 — 색이 곧 결론이다. */
@@ -162,8 +179,10 @@
 
 /* ── 층 배치 ────────────────────────────────────────────
    WEB 이 위, WAS 가 아래. 요청이 흐르는 방향 그대로다. */
+/* 내용만큼만 쓴다. flex:1 로 늘려 뒀더니 도해가 짧을 때 아래가 통째로 비고,
+   그 빈자리 맨 밑에 각주가 떠 있었다. */
 .topo-map {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
@@ -171,7 +190,6 @@
 /* 좌표계. 내용만큼 자라므로 선이 스크롤과 함께 움직인다. */
 .topo-canvas {
   position: relative;
-  min-height: 100%;
 }
 
 .topo-row {
@@ -274,8 +292,11 @@
   width: 196px;
   padding: 9px 11px 10px;
   background: var(--ink-850);
-  border: 1.5px solid var(--line-cyan-dim);
-  border-radius: 10px;
+  /* 테두리 대신 왼쪽 모서리로 상태를 말한다 — 상태 띠와 같은 말투다.
+     넷을 다 두르면 도해가 카드 격자로 읽힌다. */
+  border: 1px solid var(--tick-quiet);
+  border-left: 3px solid var(--paper-500);
+  border-radius: var(--radius-md);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
@@ -287,17 +308,14 @@
   outline: none;
 }
 
-.rack--ok { border-color: var(--gate-mint-dim); }
-.rack--warn {
-  border-color: var(--signal-amber);
-  box-shadow: 0 0 0 3px rgba(242, 166, 90, 0.08);
-}
+.rack--ok { border-left-color: var(--gate-mint-dim); }
+.rack--warn { border-left-color: var(--signal-amber); }
 .rack--crit {
-  border-color: var(--gate-rose);
-  box-shadow: 0 0 0 3px rgba(225, 102, 124, 0.1);
+  border-left-color: var(--gate-rose);
+  background: rgba(225, 102, 124, 0.05);
 }
 .rack--info,
-.rack--na { border-color: var(--line-cyan-dim); }
+.rack--na { border-left-color: var(--paper-500); }
 
 .rack-head {
   display: flex;
@@ -357,7 +375,7 @@
 }
 
 .rack-sub {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-2xs);
   color: var(--paper-500);
   overflow: hidden;
@@ -365,73 +383,71 @@
   text-overflow: ellipsis;
 }
 
+/* 값 묶음. 세로 물통 대신 가로 줄로 눕혔다 — 평시에 거의 비는 지표라 세로 상자는
+   빈 자리만 남겼다. */
 .rack-body {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+/* 대표 부하 — 이름·값이 한 줄, 그 아래 얇은 막대. */
+.rack-load {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   margin-top: 2px;
 }
 
-/* 대표 게이지 — 아래에서 차오른다. 랙의 물통처럼. */
-.rack-gauge {
-  flex: none;
+.rack-load-head {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: 46px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.rack-gauge-bar {
-  position: relative;
-  width: 100%;
-  height: 48px;
-  background: var(--ink-900);
-  border: 1px solid var(--tick-quiet);
-  border-radius: 4px;
-  overflow: hidden;
+.rack-load-label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--paper-500);
 }
 
-.rack-gauge-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  min-height: 2px;
-  transition: height 0.5s ease;
-}
-
-.rack-gauge-fill--ok { background: var(--gate-mint); }
-.rack-gauge-fill--warn { background: var(--signal-amber); }
-.rack-gauge-fill--crit { background: var(--gate-rose); }
-.rack-gauge-fill--info,
-.rack-gauge-fill--na { background: var(--paper-500); }
-
-.rack-gauge-pct {
+.rack-load-pct {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-weight: 600;
 }
 
-.rack-gauge-pct--ok { color: var(--gate-mint); }
-.rack-gauge-pct--warn { color: var(--signal-amber); }
-.rack-gauge-pct--crit { color: var(--gate-rose); }
+.rack-load-pct--ok { color: var(--paper-300); }
+.rack-load-pct--warn { color: var(--signal-amber); }
+.rack-load-pct--crit { color: var(--gate-rose); }
+.rack-load-pct--info,
+.rack-load-pct--na { color: var(--paper-500); }
+
+.rack-load-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ink-900);
+  overflow: hidden;
+}
+
+.rack-load-fill {
+  display: block;
+  height: 100%;
+  transition: width 0.5s ease;
+}
+
+/* 정상 부하는 조용해야 한다 — 초록으로 칠하면 평시에 온 화면이 알록달록해진다. */
+.rack-load-fill--ok { background: var(--paper-500); }
+.rack-load-fill--warn { background: var(--signal-amber); }
+.rack-load-fill--crit { background: var(--gate-rose); }
+.rack-load-fill--info,
+.rack-load-fill--na { background: var(--tick-quiet); }
+
+.rack-gauge-fill--info,
+
 .rack-gauge-pct--info,
-.rack-gauge-pct--na { color: var(--paper-500); }
-
-.rack-gauge-label {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--paper-500);
-  white-space: nowrap;
-}
-
-.rack-side {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
 
 .rack-metric {
   display: flex;
@@ -441,7 +457,9 @@
 
 .rack-metric-label {
   flex: none;
-  width: 2.1em;
+  /* CPU·MEM 기준으로 2.1em 이었는데 LOAD 가 들어오며 "LOA / D" 로 쪼개졌다. */
+  width: 3em;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: var(--tracking-label);
@@ -981,4 +999,112 @@
 /* 고른 주기보다 훨씬 오래된 결과. 더 자주 읽어도 안 바뀐다는 뜻이라 눈에 띄어야 한다. */
 .topo-age--stale {
   color: var(--signal-amber);
+}
+
+/* ── 시스템 상태 한 줄 ────────────────────────────────────
+   운영 화면의 첫 답. 카드로 감싸지 않는다 — 왼쪽 색 띠와 여백만으로 충분하고,
+   상자를 하나 더 두면 아래 토폴로지와 위계가 같아진다. */
+.health {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: 7px var(--space-3);
+  border-left: 3px solid var(--paper-500);
+  background: var(--ink-850);
+}
+
+.health--ok { border-left-color: var(--gate-mint); }
+.health--warn { border-left-color: var(--signal-amber); }
+.health--crit { border-left-color: var(--gate-rose); }
+
+/* 종합 판정 — 이 화면에서 가장 큰 글자다. 3초 안에 읽혀야 할 단 하나. */
+.health-state {
+  flex: none;
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--paper-100);
+}
+
+.health--ok .health-state { color: var(--gate-mint); }
+.health--warn .health-state { color: var(--signal-amber); }
+.health--crit .health-state { color: var(--gate-rose); }
+
+.health-counts {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.health-n { font-weight: 600; }
+.health-n--crit { color: var(--gate-rose); }
+.health-n--warn { color: var(--signal-amber); }
+.health-n--ok { color: var(--gate-mint); }
+
+.health-total,
+.health-alarms {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--paper-500);
+}
+
+.health-alarms {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.health-alarms b { color: var(--gate-rose); font-weight: 600; }
+
+/* 접힌 알람 줄에 세우는 대표 1건. 목록을 접어도 "무엇이" 는 남는다. */
+.alarms-lead {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.alarms-lead-target {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-100);
+}
+
+.alarms-lead-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 포트로 되짚은 선 — 실선보다 흐리게 둔다. 확인한 것과 추정한 것이 같아 보이면 안 된다. */
+.wire--guess .wire-path {
+  opacity: 0.22;
+  stroke-dasharray: 2 6;
+}
+
+.wire--guess .wire-dot { opacity: 0.45; }
+
+.topo-guess {
+  flex: none;
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
 }

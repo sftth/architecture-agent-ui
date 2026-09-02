@@ -144,55 +144,65 @@ export default function TopologyPanel({
 
   return (
     <section className="topo">
+      {/* 머리는 두 줄이다. 한 줄에 몰아 두었더니 좁은 폭에서 제목이 1글자로 짜부라져
+          "W E B · W A S" 가 세로로 떨어졌다 — 컨트롤이 일곱인데 줄이 하나였다.
+          위는 "지금 어떤가"(정체·판정·시각), 아래는 "무엇을 할 수 있나"(점검·갱신)다. */}
       <header className="topo-head">
-        <h3 className="topo-title">WEB · WAS 상태</h3>
-        {doc && (
-          <span className={`topo-verdict topo-verdict--${low(doc.verdict)}`}>
-            {VERDICT_LABEL[doc.verdict ?? "NA"]}
-          </span>
-        )}
-        <span className="topo-note">
-          {doc?.generated_at
-            ? `${new Date(doc.generated_at).toLocaleString("ko-KR", { hour12: false })} 점검`
-            : "점검 결과 없음"}
-          {/* 이 숫자가 언제 것인지 — 없으면 안 변하는 값이 고장으로 읽힌다. */}
-          {doc?.generated_at && (
-            <span
-              className={`topo-age${stale ? " topo-age--stale" : ""}`}
-              title={
-                stale
-                  ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
-                    "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
-                  : undefined
-              }
-            >
-              {" "}· {ageText(doc.generated_at, now)}
+        <div className="topo-head-row topo-head-row--state">
+          <h3 className="topo-title">WEB · WAS</h3>
+          {doc && (
+            <span className={`topo-verdict topo-verdict--${low(doc.verdict)}`}>
+              {VERDICT_LABEL[doc.verdict ?? "NA"]}
             </span>
           )}
-          {doc?.run?.env && ` · ${doc.run.env}`}
-          {doc?.run?.mode && ` · ${doc.run.mode}`}
-        </span>
+          <span className="topo-note">
+            {doc?.generated_at
+              ? `${new Date(doc.generated_at).toLocaleString("ko-KR", { hour12: false })} 점검`
+              : "점검 결과 없음"}
+            {/* 이 숫자가 언제 것인지 — 없으면 안 변하는 값이 고장으로 읽힌다. */}
+            {doc?.generated_at && (
+              <span
+                className={`topo-age${stale ? " topo-age--stale" : ""}`}
+                title={
+                  stale
+                    ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
+                      "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
+                    : undefined
+                }
+              >
+                {" "}· {ageText(doc.generated_at, now)}
+              </span>
+            )}
+            {doc?.run?.env && ` · ${doc.run.env}`}
+          </span>
+        </div>
 
-        {onCheck && (
-          <button type="button" className="topo-check" onClick={onCheck}>
-            지금 점검
-          </button>
-        )}
-        <PollControl
-          auto={auto}
-          every={every}
-          readAt={readAt}
-          onAuto={(next) => {
-            setAuto(next);
-            localStorage.setItem(AUTO_KEY, next ? "on" : "off");
-          }}
-          onEvery={(next) => {
-            setEvery(next);
-            localStorage.setItem(EVERY_KEY, String(next));
-          }}
-          onNow={load}
-        />
+        <div className="topo-head-row topo-head-row--acts">
+          {onCheck && (
+            <button type="button" className="topo-check" onClick={onCheck}>
+              지금 점검
+            </button>
+          )}
+          <PollControl
+            auto={auto}
+            every={every}
+            readAt={readAt}
+            onAuto={(next) => {
+              setAuto(next);
+              localStorage.setItem(AUTO_KEY, next ? "on" : "off");
+            }}
+            onEvery={(next) => {
+              setEvery(next);
+              localStorage.setItem(EVERY_KEY, String(next));
+            }}
+            onNow={load}
+          />
+        </div>
       </header>
+
+      {/* 3초 안에 답해야 할 질문 — 지금 정상인가, 아니면 몇 개가 어떤 등급으로 아픈가.
+          전에는 노드 카드를 하나씩 읽어야 알 수 있었다. */}
+      {targets.length > 0 && <HealthBand targets={targets} alarms={alarms} />}
 
       {!project && <p className="topo-blank">프로젝트를 고르세요</p>}
 
@@ -207,7 +217,16 @@ export default function TopologyPanel({
       {doc && targets.length === 0 && <p className="topo-blank">점검 대상이 없습니다</p>}
 
       {targets.length > 0 && (
-        <Tiers webs={webs} wases={wases} edges={edges} onPick={setPicked} onHover={setHover} />
+        <>
+          <Tiers webs={webs} wases={wases} edges={edges} onPick={setPicked} onHover={setHover} />
+          {/* 되짚은 선이 있으면 도해 바로 밑에서 밝힌다 — 그리지 못한 것보다 낫지만,
+              확인한 것처럼 보이면 안 된다. */}
+          {edges.some((e) => e.inferred) && (
+            <p className="topo-guess">
+              업스트림 주소가 점검 대상 목록과 맞지 않아 포트로 연결을 되짚었습니다. 선은 참고용입니다.
+            </p>
+          )}
+        </>
       )}
 
       {alarms.length > 0 && (
@@ -455,7 +474,10 @@ function Tiers({
             </marker>
           </defs>
           {lines.map(({ e, d }, i) => (
-            <g key={`${e.from}-${e.to}-${e.port}`} className={`wire wire--${e.ok ? "up" : "down"}`}>
+            <g
+            key={`${e.from}-${e.to}-${e.port}`}
+            className={`wire wire--${e.ok ? "up" : "down"}${e.inferred ? " wire--guess" : ""}`}
+          >
               <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
               {/* 닿는 선에만 흐름을 얹는다. 닿지 않는 선이 흐르면 그림이 거짓말을 한다. */}
               {e.ok &&
@@ -533,40 +555,43 @@ function Node({
         </span>
       )}
 
+      {/* 값은 가로로 눕힌다. 전에는 세로 물통이었는데, 워커 0.3%·Heap 0.39% 처럼 평시에
+          거의 비어 있는 지표라 48px 짜리 빈 상자만 남았다 — 밀도가 어색해 보이던 원인이다.
+          가로 막대는 같은 자리에서 이름·값·비율을 한 줄에 담는다. */}
       <span className="rack-body">
-        {/* 대표 게이지 — 무엇이 이 대상을 먼저 조이는지는 역할마다 다르다. */}
+        {/* R01 은 "CPU load (코어당)" 이다. CPU 라고만 적으면 사용률 0% 로 읽힌다. */}
+        <Metric label="LOAD" value={cpu ? String(cpu.value ?? "—") : "—"} verdict={cpu?.verdict} />
+        <Metric
+          label="MEM"
+          value={mem && mem.value !== null && mem.value !== undefined ? `${mem.value}%` : "—"}
+          verdict={mem?.verdict}
+        />
         {gauge && (
-          <span className="rack-gauge">
-            <span className="rack-gauge-bar">
+          <span className="rack-load">
+            <span className="rack-load-head">
+              <span className="rack-load-label">{gauge.label}</span>
+              <span className={`rack-load-pct rack-load-pct--${low(gauge.verdict)}`}>
+                {gauge.value}
+              </span>
+            </span>
+            <span className="rack-load-track">
               <span
-                className={`rack-gauge-fill rack-gauge-fill--${low(gauge.verdict)}`}
-                style={{ height: `${gauge.pct}%` }}
+                className={`rack-load-fill rack-load-fill--${low(gauge.verdict)}`}
+                style={{ width: `${Math.max(1.5, gauge.pct)}%` }}
               />
             </span>
-            <span className={`rack-gauge-pct rack-gauge-pct--${low(gauge.verdict)}`}>
-              {gauge.value}
-            </span>
-            <span className="rack-gauge-label">{gauge.label}</span>
           </span>
         )}
+      </span>
 
-        <span className="rack-side">
-          <Metric label="CPU" value={cpu ? String(cpu.value ?? "—") : "—"} verdict={cpu?.verdict} />
-          <Metric
-            label="MEM"
-            value={mem && mem.value !== null && mem.value !== undefined ? `${mem.value}%` : "—"}
-            verdict={mem?.verdict}
-          />
-          <span className="rack-ports">
-            {ports.length === 0 && <span className="rack-port rack-port--na">포트 없음</span>}
-            {ports.map((p) => (
-              <span key={`${p.kind}${p.port}`} className={`rack-port rack-port--${low(p.verdict)}`}>
-                {p.kind}:{p.port}
-                {p.conns !== null && <em title="현재 커넥션 수">{p.conns}</em>}
-              </span>
-            ))}
+      <span className="rack-ports">
+        {ports.length === 0 && <span className="rack-port rack-port--na">포트 없음</span>}
+        {ports.map((p) => (
+          <span key={`${p.kind}${p.port}`} className={`rack-port rack-port--${low(p.verdict)}`}>
+            {p.kind}:{p.port}
+            {p.conns !== null && <em title="현재 커넥션 수">{p.conns}</em>}
           </span>
-        </span>
+        ))}
       </span>
     </button>
   );
@@ -815,9 +840,17 @@ function AlarmList({
         <span className="alarms-title">알람</span>
         <span className="alarms-count">{alarms.length}</span>
         {crit > 0 && <span className="alarms-crit">위험 {crit}</span>}
-        <span className="alarms-hint">
-          {open ? "끌어다 놓거나 「보내기」로 지시문에 넣습니다" : "눌러서 펼치기"}
-        </span>
+        {/* 접혀 있어도 가장 심각한 한 건은 밖에 세운다. 심각한 것이 접힘 뒤에 숨으면
+            "접었다"가 아니라 "안 보인다"가 된다. */}
+        {!open && alarms[0] && (
+          <span className="alarms-lead">
+            <span className="alarms-lead-target">{alarms[0].target.id}</span>
+            <span className="alarms-lead-name">{alarms[0].check.name}</span>
+          </span>
+        )}
+        {open && (
+          <span className="alarms-hint">끌어다 놓거나 「보내기」로 지시문에 넣습니다</span>
+        )}
       </button>
 
       {open && (
@@ -881,5 +914,44 @@ function CaretIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/**
+ * 시스템 상태 한 줄.
+ *
+ * 운영 화면이 3초 안에 답해야 하는 것은 "지금 정상인가, 아니면 어디가 얼마나 아픈가"다.
+ * 전에는 그 답이 노드 카드 안에 흩어져 있어 넷을 다 읽어야 알 수 있었다.
+ *
+ * 등급별 개수는 **대상 수**로 센다(체크 수가 아니다) — 운영자가 손대야 하는 단위가
+ * 서버이기 때문이다. 옆의 알람 수는 그 서버들 안에서 몇 건이 잡혔는지를 말한다.
+ */
+function HealthBand({ targets, alarms }: { targets: StatusTarget[]; alarms: Alarm[] }) {
+  const by = (v: Verdict) => targets.filter((t) => t.verdict === v).length;
+  const crit = by("CRIT");
+  const warn = by("WARN");
+  const ok = by("OK");
+  const state: Verdict = crit > 0 ? "CRIT" : warn > 0 ? "WARN" : ok > 0 ? "OK" : "NA";
+  const critAlarms = alarms.filter((a) => a.check.verdict === "CRIT").length;
+  const oneState = [crit, warn, ok].filter((n) => n > 0).length <= 1;
+
+  return (
+    <div className={`health health--${low(state)}`}>
+      <span className="health-state">{VERDICT_LABEL[state]}</span>
+      <span className="health-counts">
+        {/* 0인 등급은 적지 않는다 — 없는 것을 세어 두면 있는 것이 묻힌다.
+            한 등급이 전부면 내역도 적지 않는다("정상 · 정상 4" 처럼 같은 말을 두 번 하게 된다). */}
+        {!oneState && crit > 0 && <b className="health-n health-n--crit">위험 {crit}</b>}
+        {!oneState && warn > 0 && <b className="health-n health-n--warn">주의 {warn}</b>}
+        {!oneState && ok > 0 && <b className="health-n health-n--ok">정상 {ok}</b>}
+        <span className="health-total">대상 {targets.length}</span>
+      </span>
+      {alarms.length > 0 && (
+        <span className="health-alarms">
+          점검 항목 {alarms.length}건 이상
+          {critAlarms > 0 && <b> (위험 {critAlarms})</b>}
+        </span>
+      )}
+    </div>
   );
 }
