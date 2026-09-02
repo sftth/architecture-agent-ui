@@ -54,9 +54,6 @@ export default function IoPanel({
 }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [preview, setPreview] = useState<FileEntry | null>(null);
-  // 단계마다 정해 둔 경로 말고, 사용자가 직접 지목한 자리. 여기가 입력이 될 때가 많다.
-  const [custom, setCustom] = useState("");
-  const [draft, setDraft] = useState("");
   const current = PHASES.find((p) => p.id === phase);
 
   // run이 끝나면 산출물이 생겼을 때다 — 한 번 다시 읽는다.
@@ -81,56 +78,20 @@ export default function IoPanel({
           type="button"
           className="io-reload"
           onClick={() => setReloadKey((k) => k + 1)}
-          disabled={!project && !custom}
+          disabled={!project}
         >
           새로고침
         </button>
       </header>
 
-      {/* 작업 입력이 늘 이 단계의 정해진 자리에 있는 것은 아니다. 회의록이든 임시 원고든
-          다른 프로젝트의 산출물이든, 지목한 자리를 그대로 입력으로 쓸 수 있어야 한다. */}
-      <div className="io-pick">
-        <input
-          className="io-pick-input"
-          value={draft}
-          placeholder="경로 직접 지정 — 예: input/chess/doc"
-          spellCheck={false}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              setCustom(draft.trim());
-            }
-          }}
-        />
-        {custom ? (
-          <button
-            type="button"
-            className="io-pick-clear"
-            onClick={() => {
-              setCustom("");
-              setDraft("");
-            }}
-          >
-            지정 해제
-          </button>
-        ) : (
-          <button type="button" className="io-pick-go" onClick={() => setCustom(draft.trim())}>
-            열기
-          </button>
-        )}
-      </div>
-
-      {!project && !custom ? (
-        <p className="io-blank">프로젝트를 고르거나 위에 경로를 지정하세요</p>
+      {!project ? (
+        <p className="io-blank">프로젝트를 선택하면 실제 입력·산출물 파일이 표시됩니다</p>
       ) : (
         <div className="io-stack">
           <IoTable
             kind="input"
             title="Input"
-            sources={
-              custom ? [{ label: "지정 경로", path: custom }, ...current.input] : current.input
-            }
+            sources={current.input}
             project={project}
             reloadKey={reloadKey}
             since={activeRun?.started_at}

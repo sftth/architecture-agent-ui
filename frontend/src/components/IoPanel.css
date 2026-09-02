@@ -267,60 +267,6 @@
   color: var(--paper-100);
 }
 
-/* 단계마다 정해 둔 경로 말고 사용자가 직접 지목하는 자리. */
-.io-pick {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.io-pick-input {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
-  background: var(--surface-recess);
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-sm);
-  color: var(--paper-100);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
-
-.io-pick-input:focus {
-  outline: none;
-  border-color: var(--line-cyan);
-}
-
-.io-pick-input::placeholder {
-  font-family: var(--font-body);
-  color: var(--paper-500);
-}
-
-.io-pick-go,
-.io-pick-clear {
-  flex: none;
-  background: none;
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: 999px;
-  padding: 4px 12px;
-  color: var(--paper-300);
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  cursor: pointer;
-}
-
-.io-pick-go:hover,
-.io-pick-clear:hover {
-  border-color: var(--line-cyan);
-  color: var(--paper-100);
-}
-
-.io-pick-clear {
-  border-color: var(--line-cyan);
-  color: var(--line-cyan);
-}
-
-
 /* 끌 수 있는 이름 — 손이 올라오면 끌 수 있다는 것을 커서로 알린다. */
 .iolink[draggable="true"] {
   cursor: grab;
