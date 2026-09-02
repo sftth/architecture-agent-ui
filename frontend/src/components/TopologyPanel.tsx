@@ -145,6 +145,20 @@ export default function TopologyPanel({
     [targets],
   );
   const edges = useMemo(() => edgesOf(targets), [targets]);
+
+  // 점검 회차마다 무엇을 봤는지가 다르다. 로그만 본 회차에는 포트(A02)·업스트림(A05)·
+  // 자원(R01/R02)이 아예 없어서 선도 값도 그릴 것이 없다 — 그건 고장이 아니라 그 회차가
+  // 그것을 안 본 것이다. 빈 상자 넷을 말없이 세워 두면 화면이 망가진 것처럼 보인다.
+  const missing = useMemo(() => {
+    if (targets.length === 0) return null;
+    const has = (id: string) => targets.some((t) => checksOf(t).some((c) => c.id === id));
+    const gaps = [
+      !has("A02") && !has("A05") ? "연결" : null,
+      !has("R01") && !has("R02") ? "자원" : null,
+      !has("A01") ? "기동" : null,
+    ].filter(Boolean);
+    return gaps.length > 0 ? gaps.join("·") : null;
+  }, [targets]);
   const alarms = useMemo(() => alarmsOf(doc), [doc]);
 
   // 자동으로 몇 초마다 읽는데 결과가 그보다 훨씬 오래됐다면, 더 자주 읽어도 소용이 없다.
@@ -158,6 +172,17 @@ export default function TopologyPanel({
   // 손이 올라간 곳이 우선, 없으면 열어 둔 대상. 관련 경로만 밝히고 나머지는 죽인다 —
   // 애니메이션보다 이 상호작용이 관계를 이해시키는 데 크다.
   const activeId = hover?.id ?? picked ?? null;
+
+  // 등급별 대상 수. 판정 배지 옆에 한 번만 적는다 — 따로 띠를 두면 같은 말을 두 번 하게 된다.
+  const counts = useMemo(() => {
+    if (targets.length === 0) return null;
+    const by = (v: Verdict) => targets.filter((t) => t.verdict === v).length;
+    const parts = [
+      by("CRIT") > 0 ? `위험 ${by("CRIT")}` : null,
+      by("WARN") > 0 ? `주의 ${by("WARN")}` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? `${parts.join(" · ")} / 대상 ${targets.length}` : `대상 ${targets.length}`;
+  }, [targets]);
 
   return (
     <section className="topo">
@@ -190,6 +215,7 @@ export default function TopologyPanel({
                 {" "}· {ageText(doc.generated_at, now)}
               </span>
             )}
+            {counts && ` · ${counts}`}
             {doc?.run?.env && ` · ${doc.run.env}`}
           </span>
         </div>
@@ -218,10 +244,6 @@ export default function TopologyPanel({
         </div>
       </header>
 
-      {/* 3초 안에 답해야 할 질문 — 지금 정상인가, 아니면 몇 개가 어떤 등급으로 아픈가.
-          전에는 노드 카드를 하나씩 읽어야 알 수 있었다. */}
-      {targets.length > 0 && <HealthBand targets={targets} alarms={alarms} />}
-
       {!project && <p className="topo-blank">프로젝트를 고르세요</p>}
 
       {project && !doc && (
@@ -233,6 +255,14 @@ export default function TopologyPanel({
       )}
 
       {doc && targets.length === 0 && <p className="topo-blank">점검 대상이 없습니다</p>}
+
+      {/* 이번 회차가 무엇을 안 봤는지 먼저 말한다. 값이 비어 있는 이유가 여기 있다. */}
+      {missing && (
+        <p className="topo-scope">
+          이번 점검은 <b>로그</b>만 봤습니다 — {missing} 정보가 없어 선과 지표를 그릴 수
+          없습니다. 전체를 보려면 「지금 점검」을 다시 돌리세요.
+        </p>
+      )}
 
       {targets.length > 0 && (
         <>
@@ -257,14 +287,8 @@ export default function TopologyPanel({
 
       {/* 손이 올라간 대상의 요약. 전에는 노드 옆에 떠서 **강조해 놓은 그 경로를 덮었다** —
           관계를 보라고 밝혀 놓고 그 위에 판을 얹은 셈이었다. 도해 아래 제자리에 둔다. */}
-      {targets.length > 0 && (
-        <div className="hoverslot">
-          {hover && byId.get(hover.id) ? (
-            <HoverCard target={byId.get(hover.id)!} edges={edges} />
-          ) : (
-            <p className="hoverslot-idle">대상에 손을 올리면 연결된 경로와 요약이 여기 나옵니다</p>
-          )}
-        </div>
+      {hover && byId.get(hover.id) && (
+        <HoverCard target={byId.get(hover.id)!} x={hover.x} y={hover.y} edges={edges} />
       )}
 
       {alarms.length > 0 && (
@@ -697,7 +721,6 @@ function Node({
       </span>
 
       <span className="rack-ports">
-        {ports.length === 0 && <span className="rack-port rack-port--na">포트 없음</span>}
         {ports.map((p) => (
           <span key={`${p.kind}${p.port}`} className={`rack-port rack-port--${low(p.verdict)}`}>
             {p.kind}:{p.port}
@@ -716,6 +739,9 @@ function Node({
  * (기동·LISTEN 같은 말) 그냥 바꾼다 — 말은 굴릴 것이 없다.
  */
 function Metric({ label, value, verdict }: { label: string; value: string; verdict?: Verdict }) {
+  // 값이 없으면 줄 자체를 세우지 않는다. 회차가 안 본 것을 "—" 로 늘어놓으면
+  // 노드가 고장난 것처럼 보인다 — 안 본 이유는 판 위의 한 줄이 말한다.
+  if (!value || value === "—") return null;
   // 값에 붙은 단위(%)는 떼어 두고 숫자만 굴린 뒤 다시 붙인다.
   const m = /^(-?\d+(?:\.\d+)?)(\D*)$/.exec(value.trim());
   const n = m ? Number(m[1]) : null;
@@ -739,14 +765,30 @@ function Metric({ label, value, verdict }: { label: string; value: string; verdi
  * 닮지 않았고, 값과 기준이 나란히 서지 않아 "이게 높은 건가"를 알 수 없었다.
  * 표로 세우면 값 옆에 기준이 오고, 판정은 그 둘을 읽은 결과로 붙는다.
  */
-function HoverCard({ target, edges }: { target: StatusTarget; edges: Edge[] }) {
+function HoverCard({
+  target,
+  x,
+  y,
+  edges,
+}: {
+  target: StatusTarget;
+  x: number;
+  y: number;
+  edges: Edge[];
+}) {
   // 자리에 맞게 앞쪽만. 전부는 눌러서 여는 상세에 있다.
-  const rows = summaryRows(target).slice(0, 6);
+  const rows = summaryRows(target).slice(0, 7);
   const out = edges.filter((e) => e.from === target.id);
   const inc = edges.filter((e) => e.to === target.id);
 
+  // 화면이 좁으면 판도 좁아진다. 넘치면 왼쪽에 붙이고, 아래로도 넘치면 끌어올린다 —
+  // 어느 쪽으로도 화면 밖으로 나가지 않는다.
+  const width = Math.min(330, Math.max(210, window.innerWidth - 48));
+  const left = x + 12 + width > window.innerWidth ? Math.max(8, x - width - 24) : x + 12;
+  const top = Math.max(8, Math.min(y, window.innerHeight - 260));
+
   return (
-    <div className="hovercard" role="tooltip">
+    <div className="hovercard" style={{ left, top, width }} role="tooltip">
       <div className="hovercard-head">
         <span className={`rack-dot rack-dot--${low(target.verdict)}`} aria-hidden="true" />
         <strong>{target.id}</strong>
@@ -1026,44 +1068,5 @@ function CaretIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-/**
- * 시스템 상태 한 줄.
- *
- * 운영 화면이 3초 안에 답해야 하는 것은 "지금 정상인가, 아니면 어디가 얼마나 아픈가"다.
- * 전에는 그 답이 노드 카드 안에 흩어져 있어 넷을 다 읽어야 알 수 있었다.
- *
- * 등급별 개수는 **대상 수**로 센다(체크 수가 아니다) — 운영자가 손대야 하는 단위가
- * 서버이기 때문이다. 옆의 알람 수는 그 서버들 안에서 몇 건이 잡혔는지를 말한다.
- */
-function HealthBand({ targets, alarms }: { targets: StatusTarget[]; alarms: Alarm[] }) {
-  const by = (v: Verdict) => targets.filter((t) => t.verdict === v).length;
-  const crit = by("CRIT");
-  const warn = by("WARN");
-  const ok = by("OK");
-  const state: Verdict = crit > 0 ? "CRIT" : warn > 0 ? "WARN" : ok > 0 ? "OK" : "NA";
-  const critAlarms = alarms.filter((a) => a.check.verdict === "CRIT").length;
-  const oneState = [crit, warn, ok].filter((n) => n > 0).length <= 1;
-
-  return (
-    <div className={`health health--${low(state)}`}>
-      <span className="health-state">{VERDICT_LABEL[state]}</span>
-      <span className="health-counts">
-        {/* 0인 등급은 적지 않는다 — 없는 것을 세어 두면 있는 것이 묻힌다.
-            한 등급이 전부면 내역도 적지 않는다("정상 · 정상 4" 처럼 같은 말을 두 번 하게 된다). */}
-        {!oneState && crit > 0 && <b className="health-n health-n--crit">위험 {crit}</b>}
-        {!oneState && warn > 0 && <b className="health-n health-n--warn">주의 {warn}</b>}
-        {!oneState && ok > 0 && <b className="health-n health-n--ok">정상 {ok}</b>}
-        <span className="health-total">대상 {targets.length}</span>
-      </span>
-      {alarms.length > 0 && (
-        <span className="health-alarms">
-          점검 항목 {alarms.length}건 이상
-          {critAlarms > 0 && <b> (위험 {critAlarms})</b>}
-        </span>
-      )}
-    </div>
   );
 }

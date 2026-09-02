@@ -212,15 +212,9 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
     { id: "common", label: "Comm/", agents: common?.agents ?? [] },
   ];
 
-  // 지금 어느 자리가 도는가. 이 하네스는 plan 이 impl·eval 을 부르는 순서라, 그 순서를
-  // 레일로 세우고 도는 자리만 표시한다. 완료 표시는 하지 않는다 — 로그에서 "지금 도는 것"은
-  // 알 수 있어도 "이미 끝난 것"은 알 수 없고, 모르는 것을 체크로 그리면 거짓이 된다.
-  const runningId = groups.find((g) => g.agents.some((a) => live.has(a.key)))?.id ?? null;
 
   return (
-    <>
-      <StageRail groups={groups} runningId={runningId} onOpen={onOpen} />
-      <div className="agent-board">
+    <div className="agent-board">
       {groups.map((group) => (
         <section className={`agent-lane agent-lane--${group.id}`} key={group.id}>
           <button type="button" className="agent-lane-title" onClick={() => onOpen(group.id)}>
@@ -248,54 +242,6 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
           </div>
         </section>
       ))}
-      </div>
-    </>
-  );
-}
-
-/**
- * 단계 레일 — Plan → Impl → Eval → Comm.
- *
- * 레인 넷을 나란히 늘어놓으면 "무엇이 있나"는 보여도 **순서와 지금 어디**가 안 보인다.
- * 이 하네스는 plan 이 나머지를 부르는 흐름이므로 그 방향을 화살표로 긋고, 실제로 도는
- * 자리만 표시한다.
- *
- * 움직임은 상태가 바뀔 때만이다 — 파이프라인 전체를 계속 흐르게 두면, 아무것도 안 도는
- * 대부분의 시간에 화면이 거짓으로 분주해진다.
- */
-function StageRail({
-  groups,
-  runningId,
-  onOpen,
-}: {
-  groups: { id: NodeId; label: string; agents: AgentDef[] }[];
-  runningId: NodeId | null;
-  onOpen: (id: NodeId) => void;
-}) {
-  return (
-    <div className="rail-stages" aria-label="하네스 단계">
-      {groups.map((g, i) => {
-        const running = g.id === runningId;
-        return (
-          <div className="rail-stage" key={g.id}>
-            {i > 0 && (
-              <span className="rail-arrow" aria-hidden="true">
-                →
-              </span>
-            )}
-            <button
-              type="button"
-              className={`rail-step${running ? " rail-step--running" : ""}`}
-              onClick={() => onOpen(g.id)}
-              title={`${g.label.replace("/", "")} — ${g.agents.length}개`}
-            >
-              <span className="rail-step-name">{g.label.replace("/", "")}</span>
-              <span className="rail-step-n">{g.agents.length}</span>
-              {running && <span className="rail-step-live" aria-hidden="true" />}
-            </button>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -303,12 +249,12 @@ function StageRail({
 /**
  * 줄에 세울 이름.
  *
- * 이름을 잘라 `middleware-…` 로 만들면 어느 impl 인지 구별이 안 된다 — 그건 접은 것이
- * 아니라 지운 것이다. 이름은 자르지 않는다.
+ * 이름은 자르지 않는다 — `middleware-…` 로 만들면 어느 impl 인지 구별이 안 되고,
+ * 그건 접은 것이 아니라 지운 것이다.
  *
- * 대신 **역할 꼬리**(-plan / -impl / -eval)를 뗀다. 이 줄이 어느 레인에 서 있는지가 이미
- * 그 역할을 말하고 있어서, 꼬리는 레인마다 같은 말을 반복하는 자리다.
- * 전체 이름은 title 로 남으므로 잃는 것이 없다.
+ * 대신 **역할 꼬리**(-plan / -impl / -eval)를 뗀다. 이 줄이 어느 레인에 서 있는지가
+ * 이미 그 역할을 말하므로, 꼬리는 레인마다 같은 말의 반복이다.
+ * 전체 이름은 title 로 남는다.
  */
 function shortKey(key: string): string {
   return key.replace(/-(plan|impl|eval)$/, "");
