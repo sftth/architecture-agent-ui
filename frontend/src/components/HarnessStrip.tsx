@@ -205,11 +205,21 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
   onSelectAgent: (key: string) => void;
   onOpen: (id: NodeId) => void;
 }) {
+  // 카탈로그 어느 레인에도 없는데 지금 도는 것들. CLI 내장 agent(general-purpose 등)가
+  // 여기 온다 — 콘솔에서는 일하고 있는데 하네스가 조용하면 두 화면이 서로 다른 말을 한다.
+  const laneKeys = new Set([
+    ...stage.agents.map((a) => a.key),
+    ...(common?.agents ?? []).map((a) => a.key),
+  ]);
+  const outside: AgentDef[] = [...live]
+    .filter((k) => !laneKeys.has(k))
+    .map((k) => ({ key: k, role: "이 스테이지 밖에서 불린 agent" }) as AgentDef);
+
   const groups: { id: NodeId; label: string; agents: AgentDef[] }[] = [
     { id: "plan", label: "Plan/", agents: stage.agents.filter((a) => roleOf(a.key) === "plan") },
     { id: "impl", label: "Impl/", agents: stage.agents.filter((a) => roleOf(a.key) === "impl") },
     { id: "eval", label: "Eval/", agents: stage.agents.filter((a) => roleOf(a.key) === "eval") },
-    { id: "common", label: "Comm/", agents: common?.agents ?? [] },
+    { id: "common", label: "Comm/", agents: [...(common?.agents ?? []), ...outside] },
   ];
 
 

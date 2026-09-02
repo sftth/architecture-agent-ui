@@ -42,6 +42,9 @@ const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
  */
 const FLOW_EDGE_CAP = 24;
 
+/** 신호 하나가 선을 지나는 데 걸리는 시간. 급하지 않게, 그러나 멈춰 보이지 않게. */
+const FLOW_SEC = 3.2;
+
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
 /**
@@ -90,6 +93,11 @@ export default function TopologyPanel({
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [readAt, setReadAt] = useState<number | null>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
+  // 흐름이 안 도는 이유는 대개 하나다 — OS 가 "애니메이션 줄이기"로 잡혀 있으면
+  // 브라우저가 그렇게 보고하고 CSS 가 흐름을 멈춘다. 화면이 조용히 멈춰 있으면
+  // 고장으로 읽히므로, 왜 멈췄는지 여기서 말한다.
+  const reduced = usePrefersReducedMotion();
   // 몇 번째 읽기인가. 값이 바뀌는 순간이 곧 "방금 갱신됐다"는 신호다.
   const [reads, setReads] = useState(0);
 
@@ -234,6 +242,17 @@ export default function TopologyPanel({
             {counts && ` · ${counts}`}
             {doc?.run?.env && ` · ${doc.run.env}`}
           </span>
+
+          {/* 이 회차가 무엇을 안 봤는지는 알아 둘 값이지, 판 위 세 줄을 늘 차지할 값은
+              아니다. 표시로 두고 눌러서 읽는다. */}
+          {(missing || reduced) && (
+            <ScopeNote
+              missing={missing}
+              reduced={reduced}
+              open={noteOpen}
+              onToggle={() => setNoteOpen((v) => !v)}
+            />
+          )}
         </div>
 
         <div className="topo-head-row topo-head-row--acts">
@@ -271,15 +290,6 @@ export default function TopologyPanel({
       )}
 
       {doc && targets.length === 0 && <p className="topo-blank">점검 대상이 없습니다</p>}
-
-      {/* 이번 회차가 무엇을 안 봤는지 먼저 말한다. 값이 비어 있는 이유가 여기 있다. */}
-      {missing && (
-        <p className="topo-scope">
-          이번 점검은 <b>로그</b>만 봤습니다. 선과 주소·포트·프로토콜은 <b>설계 확정값</b>에서
-          그린 것이라 "이렇게 붙도록 설계됐다"는 뜻이고, 지금 실제로 오가는 트래픽을 보여
-          주는 것은 아닙니다. {missing} 상태는 이 회차에 수집되지 않았습니다.
-        </p>
-      )}
 
       {targets.length > 0 && (
         <>
@@ -375,18 +385,23 @@ function PollControl({
 
       {auto ? (
         <span className="poll-auto">
-          <select
-            className="poll-every"
-            value={every}
-            aria-label="갱신 간격"
-            onChange={(e) => onEvery(Number(e.target.value))}
-          >
+          {/* 콤보를 열어 고르는 값이 아니다 — 다섯 칸짜리 눈금이라 지금 어디에 서 있는지가
+              열지 않고도 보인다. 입력판의 effort 트랙과 같은 말투를 쓴다.
+              왼쪽이 잦고 오른쪽이 뜸하다. */}
+          <span className="poll-every" role="group" aria-label="갱신 간격">
             {INTERVALS.map((i) => (
-              <option key={i.sec} value={i.sec}>
-                {i.label}마다 다시 읽기
-              </option>
+              <button
+                key={i.sec}
+                type="button"
+                className={`poll-tick${i.sec === every ? " poll-tick--on" : ""}`}
+                aria-pressed={i.sec === every}
+                aria-label={`${i.label}마다`}
+                title={`${i.label}마다 다시 읽기`}
+                onClick={() => onEvery(i.sec)}
+              />
             ))}
-          </select>
+          </span>
+          <span className="poll-every-label">{INTERVALS.find((i) => i.sec === every)?.label}</span>
           <span className={`poll-live${read ? " poll-live--read" : ""}`} aria-hidden="true" />
         </span>
       ) : (
@@ -399,6 +414,66 @@ function PollControl({
         {readAt ? `${new Date(readAt).toLocaleTimeString("ko-KR", { hour12: false })} 읽음` : "—"}
       </span>
     </div>
+  );
+}
+
+/**
+ * 이번 회차의 범위 안내.
+ *
+ * 늘 펼쳐 두면 판 위 세 줄을 차지하는데, 매번 읽을 값은 아니다. 표시로 두고 눌러서 읽는다 —
+ * 다만 표시 자체는 조용히 눈에 띄어야 한다. 값이 비어 있는 이유가 여기 있기 때문이다.
+ */
+function ScopeNote({
+  missing,
+  reduced,
+  open,
+  onToggle,
+}: {
+  missing: string | null;
+  reduced: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <span className="scope">
+      <button
+        type="button"
+        className={`scope-mark${open ? " scope-mark--on" : ""}`}
+        aria-expanded={open}
+        aria-label="이번 점검 범위"
+        onClick={onToggle}
+      >
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path
+            d="M8 5.6v3.2M8 11.2h.01"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      </button>
+      {open && (
+        <span className="scope-pop" role="note">
+          {missing && (
+            <>
+              이번 점검은 <b>로그</b>만 봤습니다. 선과 주소·포트·프로토콜은{" "}
+              <b>설계 확정값</b>에서 그린 것이라 “이렇게 붙도록 설계됐다”는 뜻이고, 지금
+              실제로 오가는 트래픽을 보여 주는 것은 아닙니다. {missing} 상태는 이 회차에
+              수집되지 않았습니다.
+            </>
+          )}
+          {reduced && (
+            <span className="scope-line">
+              이 컴퓨터가 <b>애니메이션 줄이기</b>로 설정돼 있어 연결선의 흐름 표시를 멈춰
+              두었습니다. 보시려면 Windows 설정 → 접근성 → 시각 효과 → 애니메이션 효과를
+              켜세요.
+            </span>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -435,7 +510,6 @@ function Tiers({
   onPick: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
-  const reduced = usePrefersReducedMotion();
   const wrapRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
   const [boxes, setBoxes] = useState<
@@ -532,9 +606,10 @@ function Tiers({
       } => x !== null,
     );
 
-  const tier = (list: Placed[], name: string) => (
+  // 층 이름표(WEB/WAS)는 두지 않는다 — 원 안에 이미 역할이 적혀 있고, 위아래 배치가
+  // 그 자체로 층을 말한다. 왼쪽에 한 번 더 적으면 같은 말의 반복이다.
+  const tier = (list: Placed[]) => (
     <div className="topo-row">
-      <span className="topo-tier">{name}</span>
       <div className="topo-nodes">
         {list.length === 0 && <span className="topo-none">없음</span>}
         {list.map((p) => (
@@ -599,14 +674,30 @@ function Tiers({
                 }`}
               >
                 <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
-                {/* 연결되어 있다는 표시. 트래픽의 양이 아니라 관계를 말한다. */}
-                {!reduced && drawn.length <= FLOW_EDGE_CAP && (
-                  <circle className="wire-dot wire-dot--on" r="2.4">
-                    <animateMotion dur="3.2s" repeatCount="indefinite">
-                      <mpath href={`#wire-${i}`} />
-                    </animateMotion>
-                  </circle>
+                {/*
+                  흐름은 CSS offset-path 로 그린다.
+                  전에는 SMIL <animateMotion><mpath href>를 썼는데, Chrome 은 mpath 에서
+                  href 를 보지 않는다(xlink:href 를 요구한다) — 그래서 점이 아예 움직이지
+                  않았다. offset-path 는 transform 으로 도는 데다 prefers-reduced-motion 을
+                  CSS 한 곳에서 지킬 수 있다.
+
+                  선마다 출발을 어긋나게 준다. 한꺼번에 흐르면 "맥박"이지만 번갈아 흐르면
+                  요청이 두 WAS 로 나뉘어 간다는 뜻이 된다 — mod_jk 가 실제로 하는 일이다.
+                */}
+                {drawn.length <= FLOW_EDGE_CAP && (
+                  <circle
+                    className="wire-dot"
+                    r="2.6"
+                    style={
+                      {
+                        offsetPath: `path('${d}')`,
+                        animationDelay: `${((i % drawn.length) * FLOW_SEC) / drawn.length}s`,
+                        animationDuration: `${FLOW_SEC}s`,
+                      } as React.CSSProperties
+                    }
+                  />
                 )}
+
                 {/* 설계가 정한 붙는 자리 — 주소·포트·프로토콜. 고른 경로에만 적는다. */}
                 {activeId !== null && related && (
                   <text className="wire-label" x={lx} y={ly} textAnchor="middle">
@@ -618,9 +709,9 @@ function Tiers({
           })}
         </svg>
 
-        {tier(webs, "WEB")}
+        {tier(webs)}
         <div className="topo-gap" aria-hidden="true" />
-        {tier(wases, "WAS")}
+        {tier(wases)}
       </div>
     </div>
   );
@@ -675,7 +766,8 @@ function GraphNode({
       onMouseLeave={() => onHover(null)}
       onFocus={(e) => enter(e.currentTarget)}
       onBlur={() => onHover(null)}
-      title={`${node.hostname} · ${node.ip}${node.port ? `:${node.port}` : ""}`}
+      /* title 을 두지 않는다 — 브라우저 기본 툴팁이 디자인된 툴팁 위에 하나 더 뜬다.
+         호스트·주소는 그 툴팁이 이미 적고 있다. */
     >
       <span className="gnode-disc">
         <span className="gnode-role">{node.role.toUpperCase()}</span>

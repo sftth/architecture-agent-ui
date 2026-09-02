@@ -111,15 +111,36 @@
   gap: 6px;
 }
 
+/* 갱신 간격 — 눈금 다섯 칸. 열지 않고도 지금 어디인지 보인다. */
 .poll-every {
-  padding: 2px 6px;
-  background: var(--ink-850);
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-sm);
-  color: var(--paper-300);
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.poll-tick {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--line-cyan-dim);
   cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.poll-tick:hover { background: var(--paper-500); }
+
+.poll-tick--on {
+  background: var(--line-cyan);
+  box-shadow: 0 0 0 3px rgba(74, 143, 168, 0.22);
+}
+
+.poll-every-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-300);
+  min-width: 2.6em;
 }
 
 /* 자동으로 돌고 있다는 신호. 늘 뛰지 않는다 — 실제로 읽은 순간에만 한 번 밝아진다.
@@ -184,9 +205,6 @@
   font-size: var(--text-2xs);
   color: var(--gate-rose);
 }
-
-/* ── 층 배치 ────────────────────────────────────────────
-   WEB 이 위, WAS 가 아래. 요청이 흐르는 방향 그대로다. */
 /* 내용만큼만 쓴다. flex:1 로 늘려 뒀더니 도해가 짧을 때 아래가 통째로 비고,
    그 빈자리 맨 밑에 각주가 떠 있었다. */
 .topo-map {
@@ -205,19 +223,6 @@
   align-items: flex-start;
   gap: var(--space-3);
 }
-
-.topo-tier {
-  flex: none;
-  width: 3em;
-  padding-top: 10px;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  color: var(--paper-500);
-}
-
-/* 폭이 줄면 스크롤로 미루지 않고 노드가 스스로 좁아진다. 넷이 한 줄에 남는 것이
-   두 줄로 접히는 것보다 관계를 읽기 쉽다. */
 /* 좁아지면 줄어들되, 남는 폭만큼 **늘어나지는 않는다** — 노드는 그래프의 마디이지
    칸을 채우는 상자가 아니다. 넓으면 사이가 벌어지고 선이 길어질 뿐이다. */
 .topo-nodes {
@@ -269,9 +274,20 @@
   stroke-dasharray: 3 5;
 }
 
+/* 선을 따라 흐르는 신호. offset-path 로 경로 위를 돈다 —
+   transform 만 바뀌므로 레이아웃을 건드리지 않는다. */
 .wire-dot {
   fill: currentColor;
-  opacity: 0.75;
+  opacity: 0.85;
+  offset-rotate: 0deg;
+  animation-name: wire-flow;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wire-flow {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
 }
 
 /* 눌린 경로는 신호가 느리게 간다(주기는 마크업에서). 색도 함께 낮춘다. */
@@ -306,12 +322,9 @@
 .wire--off { opacity: 0.18; }
 
 @media (prefers-reduced-motion: reduce) {
-  /* 흐름은 끄되 관계와 상태는 그대로 읽힌다 — 선의 색과 굵기가 남는다. */
-  .wire-dot { display: none; }
+  /* 흐름은 멈추되 관계는 그대로 읽힌다 — 점은 경로 중간에 서 있고 선은 남는다. */
+  .wire-dot { animation: none; offset-distance: 50%; }
 }
-
-/* ── 롤오버 카드 ────────────────────────────────────────
-   기본 title 대신. 값 옆에 기준이 서야 "이게 높은 건가"에 답이 된다. */
 /* 노드 옆에 뜬다. 흐름 밖이라 도해를 1px 도 밀지 않으므로, 자리를 잡아 뒀을 때 났던
    레이아웃 되먹임(무한 깜빡임)이 생기지 않는다. 폭은 화면에 맞춰 컴포넌트가 준다. */
 .hovercard {
@@ -588,29 +601,6 @@
   color: var(--paper-500);
 }
 
-/* 왜 이 색인지 — 값 옆이 아니라 카드 밑에 한 줄로. */
-.rack-why {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin-top: 1px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-family: var(--font-body);
-  font-size: 10px;
-  line-height: 1.35;
-  overflow: hidden;
-}
-
-.rack-why em {
-  flex: none;
-  font-style: normal;
-  opacity: 0.75;
-}
-
-.rack-why--warn { background: rgba(242, 166, 90, 0.12); color: var(--signal-amber); }
-.rack-why--crit { background: rgba(225, 102, 124, 0.13); color: var(--gate-rose); }
-
 /* 화면에서 점검을 거는 단추. 결과를 기다리는 일이라 눈에 띄어야 하지만,
    자동 갱신과 나란히 서므로 색으로 소리치지는 않는다. */
 .topo-check {
@@ -628,9 +618,6 @@
 }
 
 .topo-check:hover { background: var(--ink-800); }
-
-/* ── 알람 ────────────────────────────────────────────────
-   토폴로지는 "어디가 아픈가"를 색으로 말한다. 여기는 "무엇이 왜"를 말한다. */
 /* 접혀 있을 때는 한 줄. 이 화면의 본체는 토폴로지이고, 알람이 그것을 자르면 안 된다.
    펼치면 그때 자리를 내준다 — 얼마나 볼지는 사람이 정한다. */
 .alarms {
@@ -819,9 +806,6 @@
 .topo-age--stale {
   color: var(--signal-amber);
 }
-
-/* ── 층 배치 ────────────────────────────────────────────
-   WEB 이 위, WAS 가 아래. 요청이 흐르는 방향 그대로다. */
 /* 내용만큼만 쓴다. flex:1 로 늘려 뒀더니 도해가 짧을 때 아래가 통째로 비고,
    그 빈자리 맨 밑에 각주가 떠 있었다. */
 .topo-map {
@@ -840,19 +824,6 @@
   align-items: flex-start;
   gap: var(--space-3);
 }
-
-.topo-tier {
-  flex: none;
-  width: 3em;
-  padding-top: 10px;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  color: var(--paper-500);
-}
-
-/* 폭이 줄면 스크롤로 미루지 않고 노드가 스스로 좁아진다. 넷이 한 줄에 남는 것이
-   두 줄로 접히는 것보다 관계를 읽기 쉽다. */
 /* 좁아지면 줄어들되, 남는 폭만큼 **늘어나지는 않는다** — 노드는 그래프의 마디이지
    칸을 채우는 상자가 아니다. 넓으면 사이가 벌어지고 선이 길어질 뿐이다. */
 .topo-nodes {
@@ -904,9 +875,20 @@
   stroke-dasharray: 3 5;
 }
 
+/* 선을 따라 흐르는 신호. offset-path 로 경로 위를 돈다 —
+   transform 만 바뀌므로 레이아웃을 건드리지 않는다. */
 .wire-dot {
   fill: currentColor;
-  opacity: 0.75;
+  opacity: 0.85;
+  offset-rotate: 0deg;
+  animation-name: wire-flow;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wire-flow {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
 }
 
 /* 눌린 경로는 신호가 느리게 간다(주기는 마크업에서). 색도 함께 낮춘다. */
@@ -940,245 +922,20 @@
 .wire--on { opacity: 1; }
 .wire--off { opacity: 0.18; }
 
-@media (prefers-reduced-motion: reduce) {
-  /* 흐름은 끄되 관계와 상태는 그대로 읽힌다 — 선의 색과 굵기가 남는다. */
-  .wire-dot { display: none; }
-}
 
 /* ── 랙 카드 ────────────────────────────────────────────
    판정 색을 테두리에 두르고, 그 대상을 먼저 조이는 지표를 게이지로 세운다. */
-.rack {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  /* 넓어져도 늘어나지 않고, 좁아지면 줄어든다. */
-  flex: 0 1 176px;
-  max-width: 176px;
-  min-width: 0;
-  container-type: inline-size;
-  padding: 9px 11px 10px;
-  background: var(--ink-850);
-  /* 테두리 대신 왼쪽 모서리로 상태를 말한다 — 상태 띠와 같은 말투다.
-     넷을 다 두르면 도해가 카드 격자로 읽힌다. */
-  border: 1px solid var(--tick-quiet);
-  border-left: 3px solid var(--paper-500);
-  border-radius: var(--radius-md);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
 
 .rack:hover,
-.rack:focus-visible {
-  background: var(--ink-800);
-  outline: none;
-}
-
-.rack--ok { border-left-color: var(--gate-mint-dim); }
-.rack--warn { border-left-color: var(--signal-amber); }
-.rack--crit {
-  border-left-color: var(--gate-rose);
-  background: rgba(225, 102, 124, 0.05);
-}
-.rack--info,
-.rack--na { border-left-color: var(--paper-500); }
-
-.rack-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.rack-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
 
 /* 상태점은 쉬는 동안 움직이지 않는다. 색과 대비만으로 등급을 말하고, 움직임은
    상태가 실제로 바뀌는 순간에만 쓴다(.rack--changed). */
-.rack-dot { transition: background 0.2s ease, box-shadow 0.2s ease; }
-
-.rack-dot--ok { background: var(--gate-mint-dim); }
-.rack-dot--warn { background: var(--signal-amber); }
-.rack-dot--crit {
-  background: var(--gate-rose);
-  /* 위험은 깜빡이지 않고 **더 또렷하게** 앉아 있는다. */
-  box-shadow: 0 0 0 3px rgba(225, 102, 124, 0.18);
-}
-.rack-dot--info,
-.rack-dot--na { background: var(--paper-500); }
 
 @keyframes topo-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
-.rack-id {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--paper-100);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 주의·위험 항목 수 — 눌러 볼 이유가 여기 있다. */
-.rack-bad {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: rgba(242, 166, 90, 0.18);
-  color: var(--signal-amber);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-}
-
-.rack--crit .rack-bad {
-  background: rgba(225, 102, 124, 0.18);
-  color: var(--gate-rose);
-}
-
-.rack-sub {
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 값 묶음. 세로 물통 대신 가로 줄로 눕혔다 — 평시에 거의 비는 지표라 세로 상자는
-   빈 자리만 남겼다. */
-.rack-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 3px;
-}
-
-/* 대표 부하 — 이름·값이 한 줄, 그 아래 얇은 막대. */
-.rack-load {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.rack-load-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.rack-load-label {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--paper-500);
-}
-
-.rack-load-pct {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-}
-
-.rack-load-pct--ok { color: var(--paper-300); }
-.rack-load-pct--warn { color: var(--signal-amber); }
-.rack-load-pct--crit { color: var(--gate-rose); }
-.rack-load-pct--info,
-.rack-load-pct--na { color: var(--paper-500); }
-
-.rack-load-track {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--ink-900);
-  overflow: hidden;
-}
-
-.rack-load-fill {
-  display: block;
-  height: 100%;
-  transition: width 0.32s ease;
-}
-
-/* 정상 부하는 조용해야 한다 — 초록으로 칠하면 평시에 온 화면이 알록달록해진다. */
-.rack-load-fill--ok { background: var(--paper-500); }
-.rack-load-fill--warn { background: var(--signal-amber); }
-.rack-load-fill--crit { background: var(--gate-rose); }
-.rack-load-fill--info,
-.rack-load-fill--na { background: var(--tick-quiet); }
-
-.rack-gauge-fill--info,
-
-.rack-gauge-pct--info,
-
-.rack-metric {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-}
-
-.rack-metric-label {
-  flex: none;
-  /* CPU·MEM 기준으로 2.1em 이었는데 LOAD 가 들어오며 "LOA / D" 로 쪼개졌다. */
-  width: 3em;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  color: var(--paper-500);
-}
-
-.rack-metric-value {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-300);
-}
-
-.rack-metric-value--warn { color: var(--signal-amber); }
-.rack-metric-value--crit { color: var(--gate-rose); }
-
-/* 포트는 값이자 상태다 — 리슨 중인지가 색에 실린다. */
-.rack-ports {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.rack-port {
-  padding: 0 5px;
-  border-radius: 3px;
-  background: var(--ink-900);
-  box-shadow: inset 0 0 0 1px var(--tick-quiet);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--paper-300);
-}
-
-/* 커넥션 수. 포트 번호에 바로 붙으면 한 숫자로 읽힌다 — 선으로 가른다. */
-.rack-port em {
-  margin-left: 5px;
-  padding-left: 5px;
-  border-left: 1px solid var(--tick-quiet);
-  font-style: normal;
-  color: var(--paper-500);
-}
-
-.rack-port--ok { color: var(--gate-mint); }
-.rack-port--warn { color: var(--signal-amber); }
-.rack-port--crit { color: var(--gate-rose); }
-.rack-port--na { color: var(--paper-500); }
-
-/* ── 롤오버 카드 ────────────────────────────────────────
-   기본 title 대신. 값 옆에 기준이 서야 "이게 높은 건가"에 답이 된다. */
 /* 노드 옆에 뜬다. 흐름 밖이라 도해를 1px 도 밀지 않으므로, 자리를 잡아 뒀을 때 났던
    레이아웃 되먹임(무한 깜빡임)이 생기지 않는다. 폭은 화면에 맞춰 컴포넌트가 준다. */
 .hovercard {
@@ -1455,29 +1212,6 @@
   color: var(--paper-500);
 }
 
-/* 왜 이 색인지 — 값 옆이 아니라 카드 밑에 한 줄로. */
-.rack-why {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin-top: 1px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-family: var(--font-body);
-  font-size: 10px;
-  line-height: 1.35;
-  overflow: hidden;
-}
-
-.rack-why em {
-  flex: none;
-  font-style: normal;
-  opacity: 0.75;
-}
-
-.rack-why--warn { background: rgba(242, 166, 90, 0.12); color: var(--signal-amber); }
-.rack-why--crit { background: rgba(225, 102, 124, 0.13); color: var(--gate-rose); }
-
 /* 화면에서 점검을 거는 단추. 결과를 기다리는 일이라 눈에 띄어야 하지만,
    자동 갱신과 나란히 서므로 색으로 소리치지는 않는다. */
 .topo-check {
@@ -1495,9 +1229,6 @@
 }
 
 .topo-check:hover { background: var(--ink-800); }
-
-/* ── 알람 ────────────────────────────────────────────────
-   토폴로지는 "어디가 아픈가"를 색으로 말한다. 여기는 "무엇이 왜"를 말한다. */
 /* 접혀 있을 때는 한 줄. 이 화면의 본체는 토폴로지이고, 알람이 그것을 자르면 안 된다.
    펼치면 그때 자리를 내준다 — 얼마나 볼지는 사람이 정한다. */
 .alarms {
@@ -1740,13 +1471,7 @@
   color: var(--paper-500);
 }
 
-/* ── 노드의 생기 ──────────────────────────────────────────
-   전부 조용히 있다가, 무언가 일어난 순간에만 짧게 반응한다. */
-
 /* 방금 다시 읽었다. 테두리를 번쩍이지 않고 면을 한 번 스치고 지나간다. */
-.rack--updated {
-  animation: rack-read 620ms ease-out;
-}
 
 @keyframes rack-read {
   0% { background: var(--ink-800); }
@@ -1754,33 +1479,11 @@
 }
 
 /* 판정이 실제로 바뀌었다. 한 번만 끌고 그대로 앉는다 — 무한 반복하지 않는다. */
-.rack--changed .rack-dot {
-  animation: rack-change 900ms ease-out;
-}
 
 @keyframes rack-change {
   0% { transform: scale(1); }
   22% { transform: scale(1.45); }
   100% { transform: scale(1); }
-}
-
-/* 고른 대상과 무관한 자리는 뒤로 물린다. 지우지는 않는다 — 값은 계속 읽혀야 한다. */
-.rack {
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    opacity 0.18s ease;
-}
-
-.rack--faded { opacity: 0.4; }
-
-@media (prefers-reduced-motion: reduce) {
-  .rack--updated,
-  .rack--changed .rack-dot {
-    animation: none;
-  }
-}
-
 }
 
 /* 간선 이름표 — 이 선이 무엇으로 붙어 있는가(포트). 고른 경로에만 나온다. */
@@ -1795,30 +1498,6 @@
 }
 
 .wire--down .wire-label { fill: var(--gate-rose); }
-
-
-/* 보통 폭: 전부 보인다. */
-
-}
-
-}
-
-
-/* 이번 회차가 무엇을 안 봤는가. 값이 비어 있는 이유를 화면이 스스로 말한다 —
-   빈 상자만 세워 두면 고장으로 읽힌다. */
-.topo-scope {
-  flex: none;
-  margin: 0 0 var(--space-2);
-  padding: 6px var(--space-3);
-  border-left: 3px solid var(--signal-amber);
-  background: rgba(242, 166, 90, 0.07);
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-body);
-  color: var(--paper-300);
-}
-
-.topo-scope b { color: var(--signal-amber); font-weight: 600; }
 
 /* ── 그래프 마디 ──────────────────────────────────────────
    원이다. 상자는 "무엇이 담겼나"로 읽히고 원은 "무엇과 이어졌나"로 읽힌다 —
@@ -1941,4 +1620,60 @@
 @media (prefers-reduced-motion: reduce) {
   .gnode--updated .gnode-disc,
   .gnode--changed .gnode-disc { animation: none; }
+}
+
+/* ── 이번 회차의 범위 안내 ────────────────────────────────
+   판 위 세 줄을 늘 차지할 값은 아니다. 표시로 두고 눌러서 읽는다. */
+.scope {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+}
+
+.scope-mark {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--paper-500);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.scope-mark:hover { color: var(--paper-100); background: var(--ink-800); }
+
+.scope-mark--on {
+  color: var(--signal-amber);
+  background: rgba(242, 166, 90, 0.14);
+}
+
+/* 눌렀을 때 뜨는 쪽지. 떠 있으므로 도해를 밀지 않는다. */
+.scope-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: min(340px, 74vw);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-left: 3px solid var(--signal-amber);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-body);
+  color: var(--paper-300);
+}
+
+.scope-pop b { color: var(--signal-amber); font-weight: 600; }
+
+/* 쪽지 안의 두 번째 문단 — 서로 다른 이유를 한 덩어리로 붙여 두지 않는다. */
+.scope-line {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--tick-quiet);
 }
