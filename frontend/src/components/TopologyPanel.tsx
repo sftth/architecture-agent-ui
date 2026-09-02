@@ -478,9 +478,15 @@ function Tiers({
       const x2 = b.x + b.w / 2;
       const y2 = b.y;
       const mid = (y1 + y2) / 2;
-      return { e, d: `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}` };
+      return {
+        e,
+        d: `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`,
+        // 이름표를 놓을 자리. 3차 베지에의 t=0.5 는 이 제어점 배치에서 두 끝의 가운데다.
+        mx: (x1 + x2) / 2,
+        my: mid,
+      };
     })
-    .filter((l): l is { e: Edge; d: string } => l !== null);
+    .filter((l): l is { e: Edge; d: string; mx: number; my: number } => l !== null);
 
   const row = (list: StatusTarget[], tier: string) => (
     <div className="topo-row">
@@ -537,7 +543,7 @@ function Tiers({
               />
             </marker>
           </defs>
-          {lines.map(({ e, d }, i) => {
+          {lines.map(({ e, d, mx, my }, i) => {
             // 흐름의 **속도**가 뜻을 진다.
             //   움직인다 = 트래픽 정상 · 느리다 = 눌렸다 · 멈췄다 = 못 닿는다
             // 그래서 못 닿는 선은 붉게 깜빡이지 않는다. 멈춰 있는 것이 곧 신호다.
@@ -569,6 +575,13 @@ function Tiers({
                       </animateMotion>
                     </circle>
                   ))}
+                {/* 선이 무엇으로 붙어 있는지는 정보다. 다만 넷을 다 적으면 가운데서
+                    겹치므로, 고른 경로에만 적는다 — 강조의 보상이기도 하다. */}
+                {activeId !== null && related && (
+                  <text className="wire-label" x={mx} y={my} textAnchor="middle">
+                    {e.label}
+                  </text>
+                )}
               </g>
             );
           })}

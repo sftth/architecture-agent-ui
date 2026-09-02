@@ -683,3 +683,73 @@ button.agent-line--live:hover {
     animation: none;
   }
 }
+
+/* ── 단계 레일 ────────────────────────────────────────────
+   Plan → Impl → Eval → Comm. 레인 넷을 나란히 두면 "무엇이 있나"는 보여도
+   순서와 "지금 어디"가 안 보인다. 방향을 긋고 도는 자리만 표시한다. */
+.rail-stages {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 0 var(--space-2);
+}
+
+.rail-stage {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rail-arrow {
+  color: var(--tick-quiet);
+  font-size: var(--text-xs);
+}
+
+.rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--paper-500);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.rail-step:hover { background: var(--ink-850); color: var(--paper-300); }
+
+.rail-step-name { font-weight: 600; }
+
+.rail-step-n {
+  font-family: var(--font-mono);
+  color: var(--tick-quiet);
+}
+
+/* 도는 자리. 상태가 바뀔 때 한 번 자리를 잡고, 그 뒤에는 조용히 앉아 있는다. */
+.rail-step--running {
+  background: rgba(242, 166, 90, 0.1);
+  color: var(--signal-amber);
+  animation: rail-enter 320ms ease-out;
+}
+
+.rail-step--running .rail-step-n { color: var(--signal-amber); }
+
+.rail-step-live {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--signal-amber);
+}
+
+@keyframes rail-enter {
+  from { background: rgba(242, 166, 90, 0); }
+  to { background: rgba(242, 166, 90, 0.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-step--running { animation: none; }
+}

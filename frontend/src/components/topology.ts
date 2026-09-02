@@ -195,7 +195,8 @@ export function edgesOf(all: StatusTarget[]): Edge[] {
       port,
       ok: c.verdict === "OK",
       verdict: c.verdict,
-      label: inferred ? `추정 :${port}` : `${m1}:${port}`,
+      // 선 위에는 포트만. 추정이라는 사실은 판 아래 한 문장이 이미 말한다.
+      label: inferred ? `:${port}` : `${m1}:${port}`,
       inferred,
     });
   };

@@ -212,8 +212,15 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
     { id: "common", label: "Comm/", agents: common?.agents ?? [] },
   ];
 
+  // 지금 어느 자리가 도는가. 이 하네스는 plan 이 impl·eval 을 부르는 순서라, 그 순서를
+  // 레일로 세우고 도는 자리만 표시한다. 완료 표시는 하지 않는다 — 로그에서 "지금 도는 것"은
+  // 알 수 있어도 "이미 끝난 것"은 알 수 없고, 모르는 것을 체크로 그리면 거짓이 된다.
+  const runningId = groups.find((g) => g.agents.some((a) => live.has(a.key)))?.id ?? null;
+
   return (
-    <div className="agent-board">
+    <>
+      <StageRail groups={groups} runningId={runningId} onOpen={onOpen} />
+      <div className="agent-board">
       {groups.map((group) => (
         <section className={`agent-lane agent-lane--${group.id}`} key={group.id}>
           <button type="button" className="agent-lane-title" onClick={() => onOpen(group.id)}>
@@ -224,18 +231,89 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
             {group.agents.map((agent) => {
               const running = live.has(agent.key);
               const selected = selectedAgent === agent.key;
-              const body = <><AgentGlyph /><span>{agent.key}</span>{running && <em>working</em>}</>;
+              // 도는 중이라는 말을 글자로 또 적지 않는다 — 단계 레일과 이 줄의 색이 이미 말하고 있고,
+              // 좁은 레인에서 그 글자가 세로로 깨져 오히려 읽기를 방해했다.
+              const body = (
+                <>
+                  <AgentGlyph />
+                  <span>{shortKey(agent.key, group.id === "common" ? common?.agents ?? [] : stage.agents)}</span>
+                </>
+              );
               return commandable.has(agent.key) ? (
-                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role} onClick={() => onSelectAgent(agent.key)}>{body}</button>
+                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`} onClick={() => onSelectAgent(agent.key)}>{body}</button>
               ) : (
-                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role}>{body}</span>
+                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`}>{body}</span>
               );
             })}
           </div>
         </section>
       ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * 단계 레일 — Plan → Impl → Eval → Comm.
+ *
+ * 레인 넷을 나란히 늘어놓으면 "무엇이 있나"는 보여도 **순서와 지금 어디**가 안 보인다.
+ * 이 하네스는 plan 이 나머지를 부르는 흐름이므로 그 방향을 화살표로 긋고, 실제로 도는
+ * 자리만 표시한다.
+ *
+ * 움직임은 상태가 바뀔 때만이다 — 파이프라인 전체를 계속 흐르게 두면, 아무것도 안 도는
+ * 대부분의 시간에 화면이 거짓으로 분주해진다.
+ */
+function StageRail({
+  groups,
+  runningId,
+  onOpen,
+}: {
+  groups: { id: NodeId; label: string; agents: AgentDef[] }[];
+  runningId: NodeId | null;
+  onOpen: (id: NodeId) => void;
+}) {
+  return (
+    <div className="rail-stages" aria-label="하네스 단계">
+      {groups.map((g, i) => {
+        const running = g.id === runningId;
+        return (
+          <div className="rail-stage" key={g.id}>
+            {i > 0 && (
+              <span className="rail-arrow" aria-hidden="true">
+                →
+              </span>
+            )}
+            <button
+              type="button"
+              className={`rail-step${running ? " rail-step--running" : ""}`}
+              onClick={() => onOpen(g.id)}
+              title={`${g.label.replace("/", "")} — ${g.agents.length}개`}
+            >
+              <span className="rail-step-name">{g.label.replace("/", "")}</span>
+              <span className="rail-step-n">{g.agents.length}</span>
+              {running && <span className="rail-step-live" aria-hidden="true" />}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * 줄에 세울 이름.
+ *
+ * 이 스테이지의 agent 들이 같은 머리를 공유하면(operation 의 `middleware-`) 그 머리는
+ * 판 제목과 레인 이름이 이미 말하고 있다. 좁은 레인에서 그 중복 때문에 정작 다른 부분이
+ * 잘려 `middleware-…` 만 남았다 — 어느 impl 인지 구별이 안 됐다.
+ * 전체 이름은 title 로 남기므로 잃는 것은 없다.
+ */
+function shortKey(key: string, all: AgentDef[]): string {
+  if (all.length < 2) return key;
+  const parts = all.map((a) => a.key.split("-"));
+  let n = 0;
+  while (parts.every((p) => p.length > n + 1 && p[n] === parts[0][n])) n += 1;
+  return n === 0 ? key : key.split("-").slice(n).join("-");
 }
 
 function AgentGlyph() {

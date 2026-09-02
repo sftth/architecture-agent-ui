@@ -1214,3 +1214,16 @@
   font-size: var(--text-2xs);
   color: var(--paper-500);
 }
+
+/* 간선 이름표 — 이 선이 무엇으로 붙어 있는가(포트). 고른 경로에만 나온다. */
+.wire-label {
+  fill: var(--paper-500);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--ink-900);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.wire--down .wire-label { fill: var(--gate-rose); }
