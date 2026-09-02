@@ -1,6 +1,8 @@
 /* 운영 단계의 WEB/WAS 토폴로지. 하네스와 같은 판 처리를 쓴다 —
    가운데 칸의 두 번째 모듈 자리를 입출력 판 대신 이것이 차지한다. */
 .topo {
+  position: relative;
+  container-type: inline-size;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -214,13 +216,15 @@
   color: var(--paper-500);
 }
 
+/* 폭이 줄면 스크롤로 미루지 않고 노드가 스스로 좁아진다. 넷이 한 줄에 남는 것이
+   두 줄로 접히는 것보다 관계를 읽기 쉽다. */
 .topo-nodes {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-evenly;
-  gap: var(--space-3) var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  justify-items: stretch;
 }
 
 .topo-none {
@@ -311,7 +315,10 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  width: 196px;
+  /* 폭은 격자가 준다. 그 폭에 따라 안에서 무엇을 접을지 스스로 정한다. */
+  width: auto;
+  min-width: 0;
+  container-type: inline-size;
   padding: 9px 11px 10px;
   background: var(--ink-850);
   /* 테두리 대신 왼쪽 모서리로 상태를 말한다 — 상태 띠와 같은 말투다.
@@ -540,10 +547,13 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--ink-850);
-  border-left: 3px solid var(--line-cyan-dim);
+  background: var(--ink-900);
+  border: 1px solid var(--line-cyan-dim);
+  border-left: 3px solid var(--line-cyan);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -1195,25 +1205,41 @@
   }
 }
 
-/* 인스펙터가 설 자리. 늘 잡아 둔다 — 손을 올릴 때마다 도해가 밀려 올라가면
-   관계를 보라고 만든 상호작용이 스스로 방해가 된다. */
+/*
+ * 인스펙터는 **흐름 밖에 뜬다.**
+ *
+ * 처음엔 자리를 잡아 두었는데(min-height), 카드가 그보다 커지면 도해가 눌리고 아래 행이
+ * 커서 밑에서 빠져나가 mouseleave 가 떴다 → 카드가 사라지고 도해가 돌아오고 다시
+ * mouseenter. 무한 깜빡임의 정체가 이 되먹임이었다.
+ * 높이를 고정해 되먹임은 끊었지만, 이번엔 그 140px 이 늘 도해를 눌렀다.
+ *
+ * 흐름에서 빼면 둘 다 없어진다 — 쉴 때 자리를 먹지 않고, 뜰 때도 도해가 1px 도 안 움직인다.
+ * 포인터를 받지 않으므로(pointer-events: none) 위에 떠도 손이 가려지지 않는다.
+ */
 .hoverslot {
-  flex: none;
-  min-height: 108px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 2;
+  /* 도해를 통째로 덮을 만큼 자라지 않는다. 넘치면 안에서 자르고, 전부는 눌러서 본다. */
+  max-height: 44%;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.hoverslot-idle {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--tick-quiet);
-  background: var(--ink-850);
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
+/*
+ * 좁으면 접는다.
+ *
+ * 폭이 모자랄 때 떠 있는 판은 정확히 보고 싶은 행을 덮는다. 그때는 롤오버 요약을 포기하고
+ * 도해를 남긴다 — 상세는 눌러서 여는 창에 그대로 있으므로 잃는 정보가 없다.
+ */
+@container (max-width: 520px) {
+  .hoverslot { display: none; }
 }
+
+/* 떠 있는 판이므로 빈 상태에서는 아무것도 두지 않는다. */
+.hoverslot-idle { display: none; }
 
 /* 간선 이름표 — 이 선이 무엇으로 붙어 있는가(포트). 고른 경로에만 나온다. */
 .wire-label {
@@ -1227,3 +1253,28 @@
 }
 
 .wire--down .wire-label { fill: var(--gate-rose); }
+
+/* ── 좁아졌을 때 무엇을 접는가 ────────────────────────────
+   자리를 못 낸다고 스크롤로 미루지 않는다. 좁으면 덜 중요한 것부터 접고,
+   맨 끝까지 남는 것은 "누구이고 어떤 상태인가" 다. */
+
+/* 보통 폭: 전부 보인다. */
+
+@container (max-width: 168px) {
+  /* 엔진·호스트명은 접는다 — 이름과 상태가 먼저다. */
+  .rack-sub { display: none; }
+  .rack-load-label { display: none; }
+}
+
+@container (max-width: 138px) {
+  /* 포트 목록도 접는다. 상세는 눌러서 본다. */
+  .rack-ports { display: none; }
+  .rack-metric-label { width: 2.4em; }
+}
+
+@container (max-width: 112px) {
+  /* 마지막까지 남는 것: 이름 · 상태점 · 이상 건수 · 대표 부하. */
+  .rack-metrics,
+  .rack-metric,
+  .rack-why { display: none; }
+}

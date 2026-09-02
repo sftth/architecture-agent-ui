@@ -236,7 +236,7 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
               const body = (
                 <>
                   <AgentGlyph />
-                  <span>{shortKey(agent.key, group.id === "common" ? common?.agents ?? [] : stage.agents)}</span>
+                  <span>{shortKey(agent.key)}</span>
                 </>
               );
               return commandable.has(agent.key) ? (
@@ -303,17 +303,15 @@ function StageRail({
 /**
  * 줄에 세울 이름.
  *
- * 이 스테이지의 agent 들이 같은 머리를 공유하면(operation 의 `middleware-`) 그 머리는
- * 판 제목과 레인 이름이 이미 말하고 있다. 좁은 레인에서 그 중복 때문에 정작 다른 부분이
- * 잘려 `middleware-…` 만 남았다 — 어느 impl 인지 구별이 안 됐다.
- * 전체 이름은 title 로 남기므로 잃는 것은 없다.
+ * 이름을 잘라 `middleware-…` 로 만들면 어느 impl 인지 구별이 안 된다 — 그건 접은 것이
+ * 아니라 지운 것이다. 이름은 자르지 않는다.
+ *
+ * 대신 **역할 꼬리**(-plan / -impl / -eval)를 뗀다. 이 줄이 어느 레인에 서 있는지가 이미
+ * 그 역할을 말하고 있어서, 꼬리는 레인마다 같은 말을 반복하는 자리다.
+ * 전체 이름은 title 로 남으므로 잃는 것이 없다.
  */
-function shortKey(key: string, all: AgentDef[]): string {
-  if (all.length < 2) return key;
-  const parts = all.map((a) => a.key.split("-"));
-  let n = 0;
-  while (parts.every((p) => p.length > n + 1 && p[n] === parts[0][n])) n += 1;
-  return n === 0 ? key : key.split("-").slice(n).join("-");
+function shortKey(key: string): string {
+  return key.replace(/-(plan|impl|eval)$/, "");
 }
 
 function AgentGlyph() {

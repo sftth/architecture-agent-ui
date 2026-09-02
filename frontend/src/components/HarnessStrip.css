@@ -100,11 +100,14 @@
 }
 
 /* Monorepo skills처럼 목록은 고정된 판에 남아 있고, 실제로 선택된 작업만 글자가 켜진다. */
+/* 레인 넷을 같은 폭으로 나누면 긴 이름이 늘 잘린다. 필요한 만큼 주고, 좁아지면
+   가로로 스크롤한다 — 이름을 지우는 것보다 낫다. */
 .agent-board {
   height: 142px;
   min-height: 142px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(max-content, 1fr));
+  overflow-x: auto;
   border-top: 1px solid var(--line-cyan-dim);
   overflow: hidden;
 }
