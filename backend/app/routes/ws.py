@@ -23,6 +23,14 @@ async def ws_run(websocket: WebSocket, run_id: str, token: str = ""):
         return
 
     queue = run_manager.subscribe(run_id)
+    if queue is None:
+        # get_run과 subscribe 사이에 run이 지워졌을 수 있다(삭제 / 백엔드 재시작).
+        # 여기서 None을 그대로 두면 아래 queue.get()이 터지고, 화면에는 아무 말 없이
+        # 소켓만 닫혀 "연결 중"이 영원히 남는다.
+        await websocket.send_json({"kind": "error", "text": "run not found"})
+        await websocket.close()
+        return
+
     try:
         while True:
             event = await queue.get()

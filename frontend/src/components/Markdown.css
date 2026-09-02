@@ -1,0 +1,110 @@
+/* 에이전트가 쓴 글. 로그가 아니라 문서로 읽히도록 본문 서체와 여백을 준다. */
+.md {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--paper-100);
+}
+
+.md > *:first-child { margin-top: 0; }
+.md > *:last-child { margin-bottom: 0; }
+
+.md p {
+  margin: 0 0 var(--space-2);
+  white-space: pre-wrap;
+}
+
+.md h3,
+.md h4,
+.md h5 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-family: var(--font-body);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+
+.md h3 { font-size: var(--text-lg); }
+.md h4 { font-size: var(--text-md); }
+.md h5 { font-size: var(--text-sm); color: var(--paper-300); }
+
+.md ul,
+.md ol {
+  margin: 0 0 var(--space-2);
+  padding-left: 1.3em;
+}
+
+.md li {
+  margin-bottom: 3px;
+}
+
+.md li::marker {
+  color: var(--line-cyan);
+}
+
+.md strong { font-weight: 600; }
+
+/* 문장 속 짧은 식별자. 기계가 쓴 문자열이므로 mono. */
+.md code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--ink-800);
+  color: var(--line-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.md-code {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  background: var(--surface-recess);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-sm);
+}
+
+.md-code code {
+  padding: 0;
+  background: none;
+  color: var(--paper-100);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+}
+
+.md blockquote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line-cyan-dim);
+  color: var(--paper-300);
+}
+
+.md hr {
+  margin: var(--space-3) 0;
+  border: none;
+  border-top: 1px solid var(--line-cyan-dim);
+}
+
+/* 표가 칸보다 넓어지면 페이지가 아니라 이 안에서만 밀린다. */
+.md-table {
+  margin: 0 0 var(--space-2);
+  overflow-x: auto;
+}
+
+.md-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.md-table th,
+.md-table td {
+  padding: 4px 8px;
+  border: 1px solid var(--line-cyan-dim);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  background: var(--ink-850);
+  font-weight: 600;
+  white-space: nowrap;
+}

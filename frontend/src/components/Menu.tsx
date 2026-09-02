@@ -9,7 +9,6 @@ export interface MenuItem {
   /** 라벨 아래 한 줄 설명 */
   desc?: string;
   /** 실제 변경을 일으킬 수 있는 항목 표시 */
-  flag?: boolean;
 }
 
 /**
@@ -126,7 +125,6 @@ export default function Menu({
             <span className="menu-row-main">
               <span className="menu-row-label">
                 {item.label}
-                {item.flag && <span className="menu-row-flag" aria-label="변경 가능" />}
                 {item.hint && <em className="menu-row-hint">{item.hint}</em>}
               </span>
               {item.desc && <span className="menu-row-desc">{item.desc}</span>}

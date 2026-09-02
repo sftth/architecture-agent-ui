@@ -1,0 +1,186 @@
+/* 턴의 마지막 말 — 결과 보고.
+   중간 말들과 같은 모양이면 몇 분을 돌고 나온 답이 그 사이에 묻힌다. 판으로 세워
+   "여기서 끝났고 이게 결론"임을 형태로 말한다. */
+.report {
+  margin: var(--space-4) 0;
+  border: 1px solid var(--line-cyan-dim);
+  border-left: 2px solid var(--gate-mint);
+  border-radius: 10px;
+  background: var(--ink-900);
+  overflow: hidden;
+}
+
+.report--failed {
+  border-left-color: var(--gate-rose);
+}
+
+.report-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-850);
+  border-bottom: 1px solid var(--tick-quiet);
+}
+
+.report-badge {
+  flex: none;
+  font-family: var(--font-label);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--paper-100);
+}
+
+/* 진행 게이지 — 건수가 분명하면 숫자보다 칸이 빠르다. 한 칸이 한 건이고,
+   끝난 만큼 찬다. 도는 칸은 숨을 쉰다. */
+.report-gauge {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.report-cell {
+  width: 13px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--ink-800);
+  box-shadow: inset 0 0 0 1px var(--tick-quiet);
+}
+
+.report-cell--done { background: var(--gate-mint); box-shadow: none; }
+.report-cell--failed { background: var(--gate-rose); box-shadow: none; }
+.report-cell--running {
+  background: var(--signal-amber);
+  box-shadow: none;
+  animation: report-fill 1.2s ease-in-out infinite;
+}
+
+@keyframes report-fill {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.report-meta {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.report-bad {
+  color: var(--gate-rose);
+}
+
+/* ── 한 일 ──────────────────────────────────────────────
+   체크는 로그가 말하는 것이지 에이전트의 자평이 아니다. */
+.report-steps {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  border-bottom: 1px solid var(--tick-quiet);
+}
+
+.report-step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+
+.report-mark {
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+}
+
+.report-step--done .report-mark { color: var(--gate-mint); }
+.report-step--failed .report-mark { color: var(--gate-rose); }
+.report-step--running .report-mark {
+  color: var(--signal-amber);
+  animation: report-spin 1.1s linear infinite;
+}
+
+@keyframes report-spin {
+  to { transform: rotate(360deg); }
+}
+
+.report-step-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.report-step-agent {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--paper-100);
+}
+
+.report-step--failed .report-step-agent { color: var(--gate-rose); }
+
+.report-step-note {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.report-step-time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.report-step--failed .report-step-time { color: var(--gate-rose); }
+
+
+/* ── 보고 본문 ────────────────────────────────────────── */
+/* 본문은 늘 펼쳐 둔다 — 결과 보고에서 가려야 할 것이 있다면 그건 결과가 아니다. */
+.report-body {
+  padding: var(--space-3);
+}
+
+.report-body .md {
+  font-size: var(--text-sm);
+}
+
+/* 본문의 표는 이 판 안에서 넘치면 스스로 스크롤한다 — 판이 가로로 늘어나면
+   콘솔 전체가 어긋난다. */
+.report-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* 답을 기다리는 보고. 결과와 같은 모양이면 "다 끝났다"로 읽혀서 아무도 답하지 않는다. */
+.report--asks {
+  border-left-color: var(--signal-amber);
+}
+
+.report--asks .report-badge {
+  color: var(--signal-amber);
+}
+
+.report-answer {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--tick-quiet);
+  background: rgba(242, 166, 90, 0.07);
+  color: var(--signal-amber);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+}

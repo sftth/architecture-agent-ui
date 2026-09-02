@@ -1,24 +1,36 @@
 import asyncio
+import functools
 import json
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import store
 from .agents_catalog import find_agent
 from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
-from .models import LogEvent, RunSummary
+from .models import LogEvent, RateLimit, RunSummary, RunUsage
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# claude --output-format stream-json은 이미지 Read 결과(base64)처럼 수 MB짜리 JSON을
-# "한 줄"로 내보낸다. StreamReader 기본 버퍼(64KB)로는 그 줄에서 스트림이 끊기므로 넉넉히 잡는다.
-STREAM_LIMIT = 1 << 20
+# 세션 목록 한 줄에 들어가는 길이. 이보다 길면 어차피 화면에서 잘린다.
+MAX_TITLE_CHARS = 80
 
-# 그래도 한 줄이 이만큼을 넘으면 메모리를 지키기 위해 잘라낸다(잘린 줄은 raw 이벤트로 남는다).
+
+def default_title(prompt: str) -> str:
+    """지시문 첫 줄을 그대로 이름으로 쓴다 — 목록에서 찾는 단서는 결국 무엇을 시켰나다."""
+    first = next((line.strip() for line in (prompt or "").splitlines() if line.strip()), "")
+    if not first:
+        return "제목 없음"
+    return first if len(first) <= MAX_TITLE_CHARS else first[:MAX_TITLE_CHARS] + "..."
+
+
+# claude --output-format stream-json은 이미지 Read 결과(base64)처럼 수 MB짜리 JSON을
+# "한 줄"로 내보낸다. 한 줄이 이만큼을 넘으면 메모리를 지키기 위해 잘라낸다.
 MAX_LINE_BYTES = 8 << 20
 
 # 이벤트 하나가 들고 갈 원본(data)의 상한. 이걸 넘으면 요약으로 대체한다.
@@ -29,8 +41,25 @@ class RunState:
     def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
                  stage_title: str, agent_key: str, agent_label: str, prompt: str,
                  full_prompt: str, project: Optional[str] = None,
-                 model: str = "", effort: str = ""):
+                 model: str = "", effort: str = "", title: str = "",
+                 session_id: str = "", turns: int = 0):
         self.id = run_id
+        # claude CLI 쪽 대화 식별자. 첫 턴은 --session-id 로 지정하고, 이후 턴은
+        # --resume 으로 그 대화를 이어받는다. 이것이 없으면 "같은 세션"은 화면에서만
+        # 같고 에이전트는 앞 이야기를 하나도 모른다.
+        self.session_id = session_id or str(uuid.uuid4())
+        # 지금까지 이 세션에 보낸 지시문 수. 0 이면 아직 한 번도 안 돌린 세션이다.
+        self.turns = turns
+        # CLI 쪽에 이어받을 대화가 실제로 있는가. 이 기능이 생기기 전에 만들어진 세션은
+        # meta 에 session_id 가 없어서, 있다고 치고 --resume 하면 "No conversation found"
+        # 로 실패한다. 그런 세션은 새 대화로 열되 그 사실을 화면에 말한다.
+        self.resumable = bool(session_id)
+        self.title = title or default_title(prompt)
+        # 디스크에서 되살린 run 은 이벤트를 아직 안 읽었다는 뜻(목록에는 필요 없다).
+        self.restored = False
+        self._log = None
+        # result 이벤트가 와야 채워진다.
+        self.usage: Optional[RunUsage] = None
         self.user_id = user_id
         self.agent_dir = agent_dir
         self.stage_key = stage_key
@@ -48,12 +77,13 @@ class RunState:
         self.exit_code: Optional[int] = None
         self.events: List[LogEvent] = []
         self.subscribers: List[asyncio.Queue] = []
-        self.process: Optional[asyncio.subprocess.Process] = None
+        self.process: Optional[subprocess.Popen] = None
         self._seq = 0
 
     def summary(self) -> RunSummary:
         return RunSummary(
             id=self.id,
+            title=self.title,
             agent_key=self.agent_key,
             agent_label=self.agent_label,
             stage_key=self.stage_key,
@@ -68,7 +98,19 @@ class RunState:
             ended_at=self.ended_at,
             exit_code=self.exit_code,
             event_count=len(self.events),
+            usage=self.usage,
+            turns=self.turns,
         )
+
+    def record(self) -> dict:
+        """디스크에 남길 요약. summary() 에는 없는 값(user_id·agent_dir)을 함께 싣는다 —
+        되살릴 때 누구의 것이고 어느 저장소를 향한 실행이었는지 알아야 하기 때문이다."""
+        data = self.summary().model_dump()
+        data["user_id"] = self.user_id
+        data["agent_dir"] = self.agent_dir
+        # 백엔드를 다시 띄워도 이어서 말할 수 있어야 한다 — CLI 대화 식별자를 함께 남긴다.
+        data["session_id"] = self.session_id
+        return data
 
     def _emit(self, kind: str, *, text: Optional[str] = None, data=None,
                parent_tool_use_id: Optional[str] = None):
@@ -82,8 +124,10 @@ class RunState:
             text=text,
         )
         self.events.append(event)
+        # 화면이 들고 있는 양은 제한하되, 디스크에는 자른 것까지 전부 남긴다.
         if len(self.events) > MAX_LOG_EVENTS_PER_RUN:
             self.events.pop(0)
+        store.append_event(self._log, event)
         for queue in list(self.subscribers):
             queue.put_nowait(event)
 
@@ -92,8 +136,16 @@ class RunState:
         self.exit_code = exit_code
         self.ended_at = _now()
         self._emit("run_end", text=status, data={"exit_code": exit_code})
+        if self._log is not None:
+            try:
+                self._log.close()
+            finally:
+                self._log = None
+        store.save_meta(self.id, self.record())
+        # 구독자에게 끝을 알린다. 세션은 계속 살아 있고, 다음 턴이 오면 다시 연결한다.
         for queue in list(self.subscribers):
             queue.put_nowait(None)  # sentinel: stream closed
+        self.subscribers.clear()
 
 
 def _shrink_data(data):
@@ -139,6 +191,13 @@ def _handle_stream_line(run: RunState, raw_line: str):
     subtype = raw.get("subtype", "")
     parent_id = raw.get("parent_tool_use_id")
 
+    # 우리가 준 --session-id 를 CLI 가 그대로 쓰는지는 CLI 사정이다. 실제로 쓴 값을
+    # 받아 두어야 다음 턴의 --resume 이 빗나가지 않는다.
+    said = raw.get("session_id")
+    if isinstance(said, str) and said and said != run.session_id:
+        run.session_id = said
+        store.save_meta(run.id, run.record())
+
     if "hook" in ev_type or "hook" in subtype:
         run._emit("hook", text=f"{ev_type}/{subtype}", data=raw, parent_tool_use_id=parent_id)
         return
@@ -148,8 +207,22 @@ def _handle_stream_line(run: RunState, raw_line: str):
         return
 
     if ev_type == "rate_limit_event":
-        status = (raw.get("rate_limit_info") or {}).get("status", "unknown")
-        run._emit("system", text=f"rate limit 상태: {status}", data=raw)
+        info = raw.get("rate_limit_info") or {}
+        status = info.get("status", "unknown")
+        # 제한 창은 계정 전체에 걸리는 값이라 run 이 아니라 매니저가 들고 있는다.
+        run_manager.rate_limit = RateLimit(
+            status=str(status),
+            kind=info.get("rateLimitType"),
+            resets_at=info.get("resetsAt"),
+            using_overage=bool(info.get("isUsingOverage")),
+        )
+        # allowed 는 "아무 일 없음"이라 화면에서 걸러지는 잡음이지만, 그 밖의 상태는
+        # 실행이 여기서 멈춘 이유일 수 있다. 걸릴 자리에 두려면 종류부터 달라야 한다 —
+        # 화면이 문구를 뒤져 판정하게 만들지 않는다.
+        if status == "allowed":
+            run._emit("system", text=f"rate limit 상태: {status}", data=raw)
+        else:
+            run._emit("stderr", text=f"rate limit: {status} — 실행이 지연되거나 막힐 수 있습니다", data=raw)
         return
 
     if ev_type in ("assistant", "user"):
@@ -183,6 +256,15 @@ def _handle_stream_line(run: RunState, raw_line: str):
         return
 
     if ev_type == "result":
+        # 이 run 이 실제로 쓴 양. 화면 상단 사용량 띠가 이걸 모아 더한다.
+        usage = raw.get("usage") or {}
+        run.usage = RunUsage(
+            input_tokens=int(usage.get("input_tokens") or 0),
+            output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens") or 0),
+            cache_write_tokens=int(usage.get("cache_creation_input_tokens") or 0),
+            cost_usd=float(raw.get("total_cost_usd") or 0.0),
+        )
         text = raw.get("result") or subtype or "완료"
         run._emit("result", text=_truncate(str(text)), data=raw)
         return
@@ -190,61 +272,51 @@ def _handle_stream_line(run: RunState, raw_line: str):
     run._emit("raw", text=_truncate(json.dumps(raw, ensure_ascii=False)[:500]), data=raw)
 
 
-async def _read_lines(stream: asyncio.StreamReader):
-    """길이 제한 없이 한 줄씩 돌려준다.
+def _pump(run: "RunState", stream, loop: asyncio.AbstractEventLoop, is_stderr: bool) -> None:
+    """자식 프로세스의 파이프 한 쪽을 스레드에서 끝까지 읽는다.
 
-    `async for line in stream`(= readline)은 버퍼 한도를 넘는 줄을 만나면
-    ValueError("Separator is found, but chunk is longer than limit")를 던지고 스트림 전체를
-    끊어버린다. 실제로 intent 분석이 요구사항 이미지를 Read하는 순간 이 예외로 run이 죽었다.
-    여기서는 LimitOverrunError를 받아 조각을 이어붙이는 방식으로 긴 줄도 끝까지 읽는다.
+    읽기는 스레드에서 하되 이벤트를 만드는 일은 반드시 이벤트 루프에서 해야 한다 —
+    run.events 추가와 asyncio.Queue.put_nowait는 스레드 안전하지 않다. 그래서 줄만
+    스레드에서 뽑고 해석은 call_soon_threadsafe로 루프에 넘긴다.
     """
-    buf = bytearray()
-    while True:
-        try:
-            chunk = await stream.readuntil(b"\n")
-        except asyncio.LimitOverrunError as exc:
-            # 한도 안에서 개행을 못 찾음 -> 지금까지 확인한 만큼 가져와 이어붙이고 계속 찾는다.
-            buf += await stream.readexactly(exc.consumed)
-            if len(buf) > MAX_LINE_BYTES:
-                del buf[MAX_LINE_BYTES:]
-            continue
-        except asyncio.IncompleteReadError as exc:
-            buf += exc.partial
-            if buf:
-                yield bytes(buf)
-            return
-        buf += chunk
-        yield bytes(buf[:MAX_LINE_BYTES])
-        buf.clear()
+    for raw in iter(stream.readline, b""):
+        # stream-json 한 줄이 수 MB(이미지 Read의 base64)까지 커진다. 메모리를 지키려 자른다.
+        line = raw[:MAX_LINE_BYTES].decode("utf-8", errors="replace")
+        if is_stderr:
+            text = line.rstrip()
+            if text:
+                loop.call_soon_threadsafe(
+                    functools.partial(run._emit, "stderr", text=_truncate(text))
+                )
+        else:
+            loop.call_soon_threadsafe(_handle_stream_line, run, line)
 
 
-async def _pump_stdout(run: RunState):
-    assert run.process is not None
-    assert run.process.stdout is not None
-    async for line_bytes in _read_lines(run.process.stdout):
-        _handle_stream_line(run, line_bytes.decode("utf-8", errors="replace"))
-
-
-async def _pump_stderr(run: RunState):
-    assert run.process is not None
-    assert run.process.stderr is not None
-    async for line_bytes in _read_lines(run.process.stderr):
-        line = line_bytes.decode("utf-8", errors="replace").rstrip()
-        if line:
-            run._emit("stderr", text=_truncate(line))
-
-
-async def _terminate(process: asyncio.subprocess.Process):
+async def _terminate(process: subprocess.Popen) -> None:
     if process.returncode is not None:
         return
     process.terminate()
     try:
-        await asyncio.wait_for(process.wait(), timeout=5)
+        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=5)
     except asyncio.TimeoutError:
         process.kill()
 
 
 async def _execute(run: RunState):
+    """claude CLI를 돌리고 그 출력을 이벤트로 흘려보낸다.
+
+    프로세스는 asyncio가 아니라 스레드 위의 subprocess.Popen으로 띄운다. 윈도우에서
+    uvicorn을 --reload로 켜면 이벤트 루프가 SelectorEventLoop가 되는데(uvicorn
+    loops/asyncio.py: use_subprocess면 Selector), 이 루프는 asyncio 서브프로세스를
+    아예 지원하지 않아 create_subprocess_exec가 NotImplementedError를 던졌다. 그 예외는
+    아무도 회수하지 않는 태스크 안에서 조용히 사라졌고, run은 영원히 "running"인 채
+    이벤트가 한 건도 안 나와 화면에는 "연결 중"만 남았다. 스레드+Popen은 루프 종류를
+    가리지 않으므로, 어떻게 띄운 백엔드에서도 똑같이 돈다.
+    """
+    # 이 턴에 무엇을 물었는지 로그에 남긴다 — 한 세션에 여러 번 물으면 콘솔이 그 자리를
+    # 알아야 질문과 답을 짝지어 보여 줄 수 있다.
+    run._emit("user", text=run.prompt, data={"full_prompt": run.full_prompt, "turn": run.turns + 1})
+
     argv = [
         CLAUDE_BIN,
         "-p", run.full_prompt,
@@ -253,24 +325,50 @@ async def _execute(run: RunState):
         "--permission-mode", CLAUDE_PERMISSION_MODE,
         "--forward-subagent-text",
         "--include-hook-events",
-        "--no-session-persistence",
     ]
+    # 첫 턴은 대화를 열고, 이후 턴은 그 대화를 이어받는다.
+    #
+    # 전에는 --no-session-persistence 를 붙여 CLI 가 대화를 디스크에 남기지 않게 했다.
+    # 그래서 이어서 물을 방법이 아예 없었고, 화면도 그 사실에 맞춰 "보낼 때마다 새 run"
+    # 이었다. 이어 말하기를 되살리려면 저장이 먼저다 — 이 세션의 것만 남는다.
+    if run.turns > 0 and not run.resumable:
+        run._emit(
+            "stderr",
+            text="이 세션은 이어 말하기가 생기기 전에 만들어져 앞 대화를 넘겨받을 수 없습니다. "
+                 "새 대화로 이어갑니다 — 위쪽 기록은 화면에만 남고 에이전트는 모릅니다.",
+        )
+    if run.turns == 0 or not run.resumable:
+        argv += ["--session-id", run.session_id]
+    else:
+        argv += ["--resume", run.session_id]
+    run.turns += 1
+    # 이 턴부터는 이어받을 대화가 생긴다.
+    run.resumable = True
     # 고르지 않았으면 붙이지 않는다 = CLI 기본값을 그대로 쓴다.
     # 값은 llm_models.check_choice를 통과한 것만 들어온다(argv에 나가므로).
     if run.model:
         argv += ["--model", run.model]
     if run.effort:
         argv += ["--effort", run.effort]
+
+    if run._log is None:
+        run._log = store.open_log(run.id)
+
+    loop = asyncio.get_running_loop()
     try:
-        run.process = await asyncio.create_subprocess_exec(
-            *argv,
+        run.process = await asyncio.to_thread(
+            subprocess.Popen,
+            argv,
             cwd=run.agent_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=STREAM_LIMIT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except FileNotFoundError:
         run._emit("stderr", text=f"'{CLAUDE_BIN}' 실행 파일을 찾을 수 없습니다. PATH를 확인하세요.")
+        run._finish("error", None)
+        return
+    except Exception as exc:  # noqa: BLE001 - 어떤 이유로든 못 띄우면 화면에 남겨야 한다
+        run._emit("stderr", text=f"claude CLI를 실행하지 못했습니다: {exc!r}")
         run._finish("error", None)
         return
 
@@ -279,7 +377,9 @@ async def _execute(run: RunState):
     try:
         # return_exceptions=True: 한쪽 pump가 죽어도 다른 쪽 로그를 끝까지 받아 UI에 남긴다.
         results = await asyncio.gather(
-            _pump_stdout(run), _pump_stderr(run), return_exceptions=True
+            asyncio.to_thread(_pump, run, run.process.stdout, loop, False),
+            asyncio.to_thread(_pump, run, run.process.stderr, loop, True),
+            return_exceptions=True,
         )
         failures = [r for r in results if isinstance(r, Exception)]
         for failure in failures:
@@ -287,7 +387,18 @@ async def _execute(run: RunState):
         if failures:
             # 파이프를 더 못 읽으면 자식이 write에서 막혀 wait()가 끝나지 않는다. 먼저 종료시킨다.
             await _terminate(run.process)
-        exit_code = await run.process.wait()
+        exit_code = await asyncio.to_thread(run.process.wait)
+        if exit_code != 0 and any(
+            "No conversation found" in (e.text or "")
+            for e in run.events[-12:]
+            if e.kind == "stderr"
+        ):
+            # 대화 기록이 사라진 경우(만료·정리). 다음 턴은 새 대화로 열게 표시해 둔다.
+            run.resumable = False
+            run._emit(
+                "stderr",
+                text="이어받을 대화 기록이 CLI 쪽에 없습니다. 다시 보내면 새 대화로 시작합니다.",
+            )
         status = "error" if failures or exit_code != 0 else "success"
         run._finish(status, exit_code)
     except asyncio.CancelledError:
@@ -297,7 +408,7 @@ async def _execute(run: RunState):
         run._finish("stopped", None)
         raise
     except Exception as exc:  # noqa: BLE001 - surface any unexpected failure to the UI
-        run._emit("stderr", text=f"실행 중 예외 발생: {exc}")
+        run._emit("stderr", text=f"실행 중 예외 발생: {exc!r}")
         await _terminate(run.process)
         run._finish("error", None)
 
@@ -306,6 +417,43 @@ class RunManager:
     def __init__(self):
         self.runs: Dict[str, RunState] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
+        # 마지막으로 확인된 제한 창 상태. run 이 돌 때마다 갱신된다.
+        self.rate_limit: Optional[RateLimit] = None
+        self._restore()
+
+    def _restore(self) -> None:
+        """디스크에 남은 기록을 목록으로 되살린다. 로그는 실제로 열어 볼 때 읽는다."""
+        for meta in store.load_metas():
+            try:
+                run = RunState(
+                    run_id=meta["id"],
+                    user_id=meta.get("user_id", ""),
+                    agent_dir=meta.get("agent_dir", ""),
+                    stage_key=meta.get("stage_key", ""),
+                    stage_title=meta.get("stage_title", ""),
+                    agent_key=meta.get("agent_key", ""),
+                    agent_label=meta.get("agent_label", ""),
+                    prompt=meta.get("prompt", ""),
+                    full_prompt=meta.get("full_prompt", ""),
+                    project=meta.get("project"),
+                    model=meta.get("model") or "",
+                    effort=meta.get("effort") or "",
+                    title=meta.get("title", ""),
+                    session_id=meta.get("session_id", ""),
+                    turns=meta.get("turns", 1),
+                )
+            except KeyError:
+                continue
+            run.started_at = meta.get("started_at", run.started_at)
+            run.ended_at = meta.get("ended_at")
+            run.exit_code = meta.get("exit_code")
+            usage = meta.get("usage")
+            run.usage = RunUsage(**usage) if usage else None
+            # 프로세스는 백엔드와 함께 죽었다. "running" 으로 되살리면 영원히 도는
+            # 것처럼 보이고 중지도 안 되므로, 끊긴 것으로 표시한다.
+            run.status = "stopped" if meta.get("status") == "running" else meta.get("status", "stopped")
+            run.restored = True
+            self.runs[run.id] = run
 
     def create_run(self, user_id: str, agent_dir: str, agent_key: str, prompt: str,
                    project: Optional[str] = None, model: str = "", effort: str = "") -> RunState:
@@ -334,11 +482,72 @@ class RunManager:
             effort=effort,
         )
         self.runs[run_id] = run
+        run._log = store.open_log(run_id)
+        store.save_meta(run_id, run.record())
+        self._tasks[run_id] = asyncio.create_task(_execute(run))
+        return run
+
+    def continue_run(self, run_id: str, prompt: str, agent_key: str = "",
+                     project: Optional[str] = None, model: str = "",
+                     effort: str = "") -> RunState:
+        """이미 있는 세션에 지시문을 하나 더 보낸다.
+
+        전에는 이런 길이 없었다. 보내기는 늘 create_run 이라, 이력에서 세션을 골라
+        무언가를 물으면 그 세션 옆에 새 세션이 하나 더 생겼다. 화면만의 문제가 아니라
+        에이전트도 앞 이야기를 몰랐다 — 매번 새 대화였기 때문이다.
+
+        같은 run 에 턴을 덧붙이고, CLI 에는 --resume 으로 같은 대화를 잇는다.
+        """
+        run = self.runs.get(run_id)
+        if run is None:
+            raise ValueError(f"세션을 찾을 수 없습니다: {run_id}")
+        if run.status == "running":
+            raise ValueError("아직 실행 중인 세션입니다")
+
+        # 이어 말할 때도 대상을 바꿀 수 있다 — 같은 대화 안에서 다른 plan 을 부를 수 있어야 한다.
+        if agent_key and agent_key != run.agent_key:
+            stage, agent = find_agent(Path(run.agent_dir), agent_key)
+            if agent is None:
+                raise ValueError(f"알 수 없는 agent_key: {agent_key}")
+            run.agent_key = agent_key
+            run.agent_label = agent["label"]
+            run.stage_key = stage["key"]
+            run.stage_title = stage["title"]
+
+        if project is not None:
+            run.project = project
+        if model:
+            run.model = model
+        if effort:
+            run.effort = effort
+
+        run.prompt = prompt
+        full_prompt = f"@{run.agent_key} {prompt}".strip()
+        if run.project:
+            full_prompt = f"{full_prompt} (프로젝트: {run.project})"
+        run.full_prompt = full_prompt
+
+        run.status = "running"
+        run.ended_at = None
+        run.exit_code = None
+        # 되살린 run 이면 앞 턴의 로그를 먼저 읽어 둔다 — 안 그러면 seq 가 1부터 다시
+        # 시작해 앞 기록과 뒤엉킨다.
+        self.load_events(run)
+        store.save_meta(run_id, run.record())
         self._tasks[run_id] = asyncio.create_task(_execute(run))
         return run
 
     def get_run(self, run_id: str) -> Optional[RunState]:
         return self.runs.get(run_id)
+
+    def load_events(self, run: RunState) -> None:
+        """되살린 run 의 로그를 그때 읽어 온다. 목록만 볼 때는 읽지 않는다."""
+        if not run.restored:
+            return
+        run.restored = False
+        run.events = store.load_events(run.id)
+        if run.events:
+            run._seq = run.events[-1].seq
 
     def list_runs(self, user_id: str) -> List[RunSummary]:
         return [r.summary() for r in sorted(
@@ -346,13 +555,40 @@ class RunManager:
             key=lambda r: r.started_at, reverse=True,
         )]
 
+    def rename_run(self, run_id: str, title: str) -> Optional[RunState]:
+        run = self.runs.get(run_id)
+        if run is None:
+            return None
+        cleaned = (title or "").strip()
+        # 빈 이름으로 지우면 목록에서 어느 줄인지 알아볼 수 없게 된다 — 원래 이름으로 되돌린다.
+        run.title = (cleaned[:MAX_TITLE_CHARS] or default_title(run.prompt))
+        store.save_meta(run_id, run.record())
+        return run
+
+    async def delete_run(self, run_id: str) -> bool:
+        run = self.runs.get(run_id)
+        if run is None:
+            return False
+        # 도는 중인 것을 목록에서만 지우면 프로세스는 남아 계속 서버를 건드린다. 먼저 멈춘다.
+        if run.status == "running":
+            await self.stop_run(run_id)
+        task = self._tasks.pop(run_id, None)
+        if task and not task.done():
+            task.cancel()
+        # 구독 중인 WebSocket은 sentinel을 받아야 스스로 닫는다.
+        for queue in list(run.subscribers):
+            queue.put_nowait(None)
+        self.runs.pop(run_id, None)
+        store.remove(run_id)
+        return True
+
     async def stop_run(self, run_id: str) -> bool:
         run = self.runs.get(run_id)
         if run is None or run.process is None or run.status != "running":
             return False
         run.process.terminate()
         try:
-            await asyncio.wait_for(run.process.wait(), timeout=5)
+            await asyncio.wait_for(asyncio.to_thread(run.process.wait), timeout=5)
         except asyncio.TimeoutError:
             run.process.kill()
         return True
@@ -361,6 +597,7 @@ class RunManager:
         run = self.runs.get(run_id)
         if run is None:
             return None
+        self.load_events(run)
         queue: asyncio.Queue = asyncio.Queue()
         for event in run.events:
             queue.put_nowait(event)

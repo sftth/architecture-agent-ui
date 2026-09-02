@@ -35,3 +35,6 @@ backend/data/*
 # Editor
 .vscode/
 .idea/
+
+# 개인 로컬 설정 — 사람마다 다르고 공유할 값이 아니다(.local 이름이 그 뜻이다).
+.claude/settings.local.json

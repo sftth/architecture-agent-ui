@@ -1,10 +1,12 @@
+/* 레일은 뼈대다 — 바탕과 같은 면에 두고 오른쪽 실선으로만 나눈다.
+   전에는 --ink-900 이라 카드와 같은 색이었고, 그래서 3줄짜리 목록이 화면 왼쪽을
+   가득 채운 거대한 카드처럼 보였다. 길잡이는 물러나 있어야 한다. */
 .rail {
   flex: none;
-  width: 224px;
+  width: 208px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ink-900);
   border-right: 1px solid var(--line-cyan-dim);
 }
 
@@ -14,9 +16,11 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-3) var(--space-2);
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  color: var(--line-cyan);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--paper-500);
 }
 
 .rail-manage {
@@ -63,63 +67,61 @@
   padding: 0 var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
+/* 아이콘 + 이름 한 줄. 테두리를 두르는 대신 채운 알약으로 고른 것을 짚는다 —
+   목록의 모든 줄에 테두리가 생겼다 사라졌다 하면 눈이 그 깜빡임을 먼저 좇는다. */
 .rail-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2) var(--space-2);
+  padding: 8px var(--space-2);
   background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 7px;
   color: var(--paper-300);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .rail-item:hover {
-  border-color: var(--line-cyan-dim);
-  color: var(--paper-100);
-}
-
-/* 지금 보고 있는 단계 — 왼쪽 마커로 짚어 준다(상태 램프와 겹치지 않게). */
-.rail-item--on {
   background: var(--ink-850);
-  border-color: var(--line-cyan-dim);
-  box-shadow: inset 3px 0 0 var(--line-cyan);
   color: var(--paper-100);
 }
 
-.rail-num {
+.rail-item--on {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+.rail-icon {
   flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-md);
+  color: var(--paper-500);
+}
+
+.rail-item:hover .rail-icon {
+  color: var(--paper-300);
+}
+
+.rail-item--on .rail-icon {
   color: var(--line-cyan);
 }
 
-.rail-text {
+.rail-name {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.rail-name {
-  font-family: var(--font-label);
-  font-size: var(--text-lg);
+.rail-item--on .rail-name {
   font-weight: 600;
-}
-
-.rail-caption {
-  font-size: var(--text-xs);
-  line-height: var(--leading-tight);
-  color: var(--paper-500);
-  word-break: keep-all;
 }
 
 .rail-lamp {
@@ -144,11 +146,21 @@
   50% { box-shadow: 0 0 0 5px rgba(242, 166, 90, 0.25); }
 }
 
-/* 실행 기록은 남는 높이를 다 쓰고 그 안에서 스크롤한다. */
-.rail-history {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-3) var(--space-2) var(--space-2);
+
+/* 도는 단계 — 마지막 run 의 결과색보다 "지금 살아 있다"가 먼저다.
+   화면이 다른 단계에 머물러 있어도 어디서 도는지는 여기서 먼저 보인다. */
+.rail-lamp--live {
+  background: var(--line-cyan);
+  animation: rail-live 1.4s ease-in-out infinite;
+}
+
+@keyframes rail-live {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(90, 200, 214, 0.18); }
+  50% { box-shadow: 0 0 0 5px rgba(90, 200, 214, 0.3); }
+}
+
+/* 고르지 않은 단계에서 돌고 있으면 이름만이라도 살려 둔다 — 꺼진 글자 옆의 점 하나는
+   눈에 안 들어온다. */
+.rail-item--live:not(.rail-item--on) .rail-name {
+  color: var(--paper-100);
 }

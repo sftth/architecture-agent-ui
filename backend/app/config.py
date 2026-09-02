@@ -4,11 +4,20 @@ from pathlib import Path
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 
 # 비대화형(non-interactive) 실행이므로 권한 프롬프트에 응답할 수 없다.
-# architecture-agent는 이미 .claude/hooks/policy-gate.sh, audit-log.sh로 자체 안전장치를 두고 있어
-# 여기서는 CLI 권한 프롬프트만 우회한다.
+#
+# 주의 — 이 기본값의 근거가 약해졌다. 전에는 architecture-agent 가
+# .claude/hooks/policy-gate.sh, audit-log.sh 로 자체 안전장치를 두고 있어 CLI 프롬프트만
+# 우회하면 됐는데, 그 hook 들이 제거되고 설계 품질 검증이 design-eval 로 일원화됐다
+# (refactor/policy-gate-unification). 지금은 사전 차단 없이 Bash·Write 가 그대로 나간다.
+# 동작을 바꾸면 기존 실행이 프롬프트에서 멈추므로 기본값은 유지하되,
+# 공용 서버에 띄울 때는 CLAUDE_PERMISSION_MODE 로 조여 쓰는 것을 권한다.
 CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "bypassPermissions")
 
 MAX_LOG_EVENTS_PER_RUN = 5000
+
+# 실행 기록을 남기는 자리. 최초 커밋부터 .gitkeep 만 들고 비어 있던 디렉터리다 —
+# 저장할 자리로 잡아 두고 아무도 쓰지 않아, 백엔드가 내려가면 세션이 통째로 사라졌다.
+RUNS_DIR = Path(os.environ.get("RUNS_DIR", str(Path(__file__).resolve().parent.parent / "runs")))
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 

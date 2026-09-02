@@ -1,0 +1,32 @@
+/* 가운데 칸과 컨텍스트 칸 사이의 손잡이.
+   폭은 4px 지만 잡히는 범위는 ::before 로 넓혀 둔다 — 4px 짜리 선을 정확히 겨누게
+   만들면 끌기가 일이 된다. 평소에는 경계선 하나로만 보인다. */
+.side-resizer {
+  position: relative;
+  flex: none;
+  width: 4px;
+  margin-right: -1px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  touch-action: none;
+}
+
+.side-resizer::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.side-resizer:hover,
+.side-resizer:focus-visible,
+.side-resizer--on {
+  background: var(--line-cyan);
+  outline: none;
+}
+
+/* 끄는 동안 화면 전체 — 글자가 잡히거나 커서가 바뀌면 끌기가 끊긴 것처럼 느껴진다. */
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}

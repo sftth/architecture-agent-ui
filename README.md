@@ -29,10 +29,16 @@
 ```bash
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 9000 --timeout-graceful-shutdown 5
 ```
 
-기본적으로 `http://localhost:8000`에서 API 서버가 뜹니다. 헬스체크: `curl http://localhost:8000/api/health`
+기본적으로 `http://localhost:9000`에서 API 서버가 뜹니다. 헬스체크: `curl http://localhost:9000/api/health`
+
+> `--timeout-graceful-shutdown 5`를 빼지 마세요. `--reload`는 백엔드 파일이 바뀔 때마다
+> 워커를 재시작하는데, uvicorn은 그 전에 열린 연결이 닫히기를 기다립니다. 화면이 실행 로그를
+> 보고 있으면 WebSocket이 계속 열려 있으므로 그 기다림이 끝나지 않고, supervisor가
+> `join()`에서 멈춘 채 리스닝 소켓을 쥐고 있어 API 전체가 응답하지 않게 됩니다.
+> 이 옵션이 5초 뒤 강제로 끊어 재시작을 끝냅니다.
 
 ### 백엔드 환경변수 (선택)
 
@@ -59,7 +65,7 @@ npm install
 npm run dev
 ```
 
-`http://localhost:5173`에서 접속합니다. Vite dev 서버가 `/api`, `/ws` 요청을 `http://localhost:8000`
+`http://localhost:5274`에서 접속합니다. Vite dev 서버가 `/api`, `/ws` 요청을 `http://localhost:9000`
 백엔드로 프록시합니다(`frontend/vite.config.ts`). 백엔드를 다른 포트/호스트로 띄웠다면 이 설정을
 맞춰 수정하세요.
 
@@ -67,16 +73,16 @@ npm run dev
 > `127.0.0.1`(루프백)에만 바인딩되어 서버 밖에서는 접속할 수 없습니다. 반드시 `--host`를 붙이세요.
 >
 > ```bash
-> npm run dev -- --host 0.0.0.0 --port 5173
+> npm run dev -- --host 0.0.0.0 --port 5274
 > ```
 >
-> 백엔드는 vite가 같은 서버 안에서 `localhost:8000`으로 내부 프록시하므로 `127.0.0.1` 바인딩 그대로
+> 백엔드는 vite가 같은 서버 안에서 `localhost:9000`으로 내부 프록시하므로 `127.0.0.1` 바인딩 그대로
 > 둬도 됩니다(외부에 직접 노출할 필요 없음). 그래도 브라우저에서 접속이 안 되면 AWS 보안그룹 등에서
-> 5173 포트 인바운드가 열려 있는지 확인하세요.
+> 5274 포트 인바운드가 열려 있는지 확인하세요.
 
 ## 첫 실행 시
 
-1. 브라우저로 프론트엔드(`http://localhost:5173`)에 접속하면 로그인 화면이 뜹니다.
+1. 브라우저로 프론트엔드(`http://localhost:5274`)에 접속하면 로그인 화면이 뜹니다.
 2. **회원가입** 탭에서 이메일 / 비밀번호(8자 이상)와 함께, 로컬에 clone해 둔 architecture-agent의
    절대 경로(예: `/home/사용자명/architecture-agent`)를 입력합니다. 경로는 비워두고 가입한 뒤
    환경 설정 화면에서 나중에 지정해도 됩니다.
@@ -194,7 +200,7 @@ Type=simple
 User=ec2-user
 Environment=CLAUDE_BIN=/home/ec2-user/.local/bin/claude
 WorkingDirectory=/home/ec2-user/architecture-agent-ui/backend
-ExecStart=/home/ec2-user/architecture-agent-ui/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+ExecStart=/home/ec2-user/architecture-agent-ui/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 9000 --reload --timeout-graceful-shutdown 5
 Restart=on-failure
 RestartSec=3
 
@@ -213,7 +219,7 @@ After=network.target
 Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/architecture-agent-ui/frontend
-ExecStart=/home/ec2-user/.nvm/versions/node/v24.14.1/bin/node /home/ec2-user/architecture-agent-ui/frontend/node_modules/.bin/vite --host 0.0.0.0 --port 5173
+ExecStart=/home/ec2-user/.nvm/versions/node/v24.14.1/bin/node /home/ec2-user/architecture-agent-ui/frontend/node_modules/.bin/vite --host 0.0.0.0 --port 5274
 Restart=on-failure
 RestartSec=3
 

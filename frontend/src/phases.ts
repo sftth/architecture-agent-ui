@@ -1,7 +1,7 @@
 import { StageDef } from "./types";
 
 /** 상단 프로세스이자 화면 전환 메뉴. 세부 절차는 각 단계 안에 속한다. */
-export type PhaseId = "analyze" | "design" | "implement";
+export type PhaseId = "analyze" | "design" | "implement" | "operate";
 
 /** 화면에서 확인할 입력·산출물 자리. {project}는 고른 프로젝트로 바뀐다. */
 export interface PhaseIo {
@@ -64,23 +64,61 @@ export const PHASES: Phase[] = [
       { label: "정식 문서", path: "output/{project}/doc" },
     ],
   },
+  {
+    id: "operate",
+    num: "04",
+    title: "운영",
+    caption: "설치된 WEB/WAS 상태 점검",
+    stageKeys: ["operation"],
+    // 점검 대상은 설계서에서 나온다 — 그래서 설계 산출물이 이 단계의 입력이다.
+    input: [
+      { label: "설계서", path: "output/{project}/design" },
+      { label: "확정 정보", path: "output/{project}/confirmed" },
+    ],
+    output: [
+      { label: "상태", path: "output/{project}/status" },
+      { label: "보고서", path: "report/{project}" },
+    ],
+  },
 ];
 
-export function phaseIdForStage(stageKey: string): PhaseId {
+/** 공통 유틸리티. 어느 단계에도 속하지 않고, 모든 단계에서 불려 나간다. */
+export const COMMON_STAGE = "common";
+
+/**
+ * 이 stage가 어느 단계의 것인가. 공통 유틸리티는 null이다 — 소속이 없다는 뜻이다.
+ *
+ * 전에는 common을 마지막 단계(구현)에 얹어 뒀다. 화면에서 사라지지 않게 하려던 것인데,
+ * 그 바람에 "문서 변환은 구현 단계의 일"처럼 보였고 분석·설계에서는 고를 수조차 없었다.
+ * 실제로는 common-doc-impl 스스로 "분석·설계·구현 어느 단계에서든 호출할 수 있다"고
+ * 선언한다. 그래서 소속을 없애고, 대신 모든 단계에 함께 실어 보낸다.
+ */
+export function phaseIdForStage(stageKey: string): PhaseId | null {
+  if (stageKey === COMMON_STAGE) return null;
   const phase = PHASES.find((p) => p.stageKeys.includes(stageKey));
-  // 공통 유틸리티(common: LLM Wiki 조회, 문서·보고서 변환)는 특정 단계에 속하지 않고
-  // 전 단계에서 쓰인다. 화면에서 사라지지 않도록 마지막 단계에 함께 표시하되,
-  // 어느 단계의 상태 판정(stageKeys)에도 넣지 않아 단계 램프를 흔들지 않는다.
+  // 앞으로 생길 새 도메인이 화면에서 통째로 사라지지는 않게 마지막 단계로 보낸다.
   return phase ? phase.id : PHASES[PHASES.length - 1].id;
 }
 
-/** 카탈로그 원본 순서를 유지한 채 해당 단계에 속한 stage만 골라낸다. */
+/** 카탈로그 원본 순서를 유지한 채 해당 단계에 속한 stage만 골라낸다(공통은 빠진다). */
 export function stagesForPhase(stages: StageDef[], phaseId: PhaseId): StageDef[] {
   return stages.filter((s) => phaseIdForStage(s.key) === phaseId);
 }
 
-/** {project} 자리를 채운다. 프로젝트를 안 골랐으면 볼 자리를 정할 수 없다. */
+/** 어느 단계에서 보든 함께 딸려 오는 공통 유틸리티 stage. */
+export function commonStage(stages: StageDef[]): StageDef | undefined {
+  return stages.find((s) => s.key === COMMON_STAGE);
+}
+
+/**
+ * {project} 자리를 채운다. 프로젝트를 안 골랐으면 볼 자리를 정할 수 없다.
+ *
+ * 다만 {project}가 없는 문자열은 사용자가 직접 적어 넣은 완성된 경로다 — 그건
+ * 프로젝트와 무관하게 그대로 쓴다. 작업 입력이 늘 output/{project}/design 같은
+ * 정해진 자리에 있는 것은 아니기 때문이다(회의록·임시 원고·다른 프로젝트의 산출물).
+ */
 export function ioPath(pattern: string, project: string): string | null {
+  if (!pattern.includes("{project}")) return pattern.trim() || null;
   if (!project) return null;
   return pattern.replace("{project}", project);
 }

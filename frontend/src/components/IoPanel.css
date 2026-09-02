@@ -1,9 +1,14 @@
 .io {
+  /* 가운데 칸의 남는 높이를 이 판이 가져간다. 길어지는 것은 파일 목록이므로
+     빈자리를 두느니 표를 더 보이는 편이 낫다. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
-  padding: var(--space-4);
+  border-radius: 8px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
 .io-header {
@@ -57,97 +62,107 @@
   color: var(--paper-500);
 }
 
-/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
-.iogroup {
-  overflow-x: auto;
-}
-
-.io-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* Input 표 하나, Output 표 하나 — 위아래로 쌓는다. 나란히 두면 좁은 칸에서
+   파일 이름이 둘 다 잘려 "이름을 읽는" 표의 일이 안 된다. */
+.io-stack {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
-.io-side {
+.iot {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 
-/* 들어온 것과 나간 것을 색으로 갈라 둔다 — 실행 전후로 무엇이 늘었는지 보기 쉽게. */
-.io-side-label {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--line-cyan);
+.iot-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line-cyan-dim);
 }
 
-.io-side-label--out {
+/* 들어온 것과 나간 것을 색으로 갈라 둔다 — 실행 전후로 무엇이 늘었는지 보기 쉽게. */
+.iot-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--line-cyan);
+}
+
+.iot--output .iot-title {
   color: var(--gate-mint);
+}
+
+.iot--output .iot-head {
   border-bottom-color: var(--gate-mint-dim);
 }
 
-.iogroup {
-  min-width: 0;
+.iot-grow {
+  flex: 1;
 }
 
-.iogroup-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.iogroup-label {
-  font-family: var(--font-label);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--paper-300);
-}
-
-.iogroup-up {
+.iot-up {
+  flex: none;
   background: none;
   border: none;
+  padding: 0;
   color: var(--line-cyan);
   font-family: var(--font-label);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   cursor: pointer;
-  padding: 0;
 }
 
-.iogroup-path {
+.iot-count {
+  flex: none;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--paper-500);
-  margin-bottom: 4px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-.iogroup-empty,
-.iogroup-error {
-  margin: 0;
+.iot-empty,
+.iot-error {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--paper-500);
 }
 
-.iogroup-error {
+.iot-error {
   color: var(--gate-rose);
 }
 
-.iogroup-count {
-  margin-left: auto;
+/* 아직 안 만들어진 경로. 경로 자체는 보여 줘야 어디에 넣으면 되는지 알 수 있다. */
+.iot-paths {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.iot-path {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--paper-500);
+}
+
+.iot-path em {
+  font-style: normal;
+  color: var(--line-cyan-dim);
+}
+
+/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
+.iot-scroll {
+  overflow-x: auto;
 }
 
 /* ── 파일 표 ─────────────────────────────────────────────
    이름만 나열하면 "언제 생긴 것인지 / 얼마나 큰지"를 알 수 없어 결과 확인이 안 된다.
-   종류·크기·수정 시각을 같은 자리에 세우고, 방금 돌린 실행 이후에 바뀐 줄은 표시한다. */
+   위치·크기·수정 시각을 같은 자리에 세우고, 방금 돌린 실행 이후에 바뀐 줄은 표시한다. */
 .iotable {
   width: 100%;
   border-collapse: collapse;
@@ -155,8 +170,8 @@
 }
 
 .iotable thead th {
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--line-cyan-dim);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--tick-quiet);
   color: var(--paper-500);
   font-family: var(--font-label);
   font-size: var(--text-2xs);
@@ -219,7 +234,7 @@
   white-space: nowrap;
 }
 
-.iotable-kind,
+.iotable-where,
 .iotable-size,
 .iotable-time {
   color: var(--paper-500);
@@ -252,20 +267,11 @@
   color: var(--paper-100);
 }
 
-@media (max-width: 720px) {
-  .io-blank {
-  margin: 0;
-  padding: var(--space-4) var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--paper-500);
+/* 끌 수 있는 이름 — 손이 올라오면 끌 수 있다는 것을 커서로 알린다. */
+.iolink[draggable="true"] {
+  cursor: grab;
 }
 
-/* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
-.iogroup {
-  overflow-x: auto;
-}
-
-.io-grid {
-    grid-template-columns: 1fr;
-  }
+.iolink[draggable="true"]:active {
+  cursor: grabbing;
 }
