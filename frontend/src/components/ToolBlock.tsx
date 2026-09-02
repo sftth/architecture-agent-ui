@@ -14,6 +14,8 @@ export interface ToolCall {
   output: string | null;
   /** Bash의 description처럼 이 호출이 무엇을 하려는지 한 줄로 적힌 값 */
   note: string | null;
+  /** 접힌 줄에 세울 한 줄 요약. 원본 input 에서 뽑는다(문자열화된 뒤에는 못 뽑는다). */
+  gist: string;
   failed: boolean;
 }
 
@@ -30,13 +32,6 @@ function clip(text: string, limit: number): { shown: string; more: boolean } {
  * 짝을 눈으로 다시 맞춰야 했다. 여기서는 그 둘을 한 상자에 묶는다.
  * 긴 것은 잘라 두되 잘렸다는 사실을 감추지 않고, 손을 올리면 복사와 전체 보기가 나온다.
  */
-/** 접힌 줄에 세울 한 줄 요약. 도구 이름만으로는 무엇을 했는지 알 수 없다. */
-function gist(tool: ToolCall): string {
-  const source = tool.note || tool.input || "";
-  const line = source.split("\n").find((l) => l.trim()) ?? "";
-  return line.trim();
-}
-
 function ToolBlock({ tool }: { tool: ToolCall }) {
   // 기본은 접힘. 한 run 에 도구 호출이 수백 건이라, 전부 펼쳐 두면 정작 읽어야 할
   // 에이전트의 말이 그 사이에 묻힌다. 접힌 줄에도 무엇을 했는지는 남긴다 —
@@ -57,11 +52,14 @@ function ToolBlock({ tool }: { tool: ToolCall }) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={`tool-caret${open ? " tool-caret--open" : ""}`} aria-hidden="true">
+        {/* 평소에는 점 하나. 꺾쇠가 모든 줄에 박히면 목록이 시끄러워진다 —
+            손이 올라오거나 펼쳤을 때만 방향을 보인다. */}
+        <span className={`tool-mark${open ? " tool-mark--open" : ""}`} aria-hidden="true">
+          <span className="tool-dot" />
           <CaretIcon />
         </span>
         <strong className="tool-name">{tool.name}</strong>
-        <span className="tool-gist">{gist(tool)}</span>
+        <span className="tool-gist">{tool.gist}</span>
         {running && <span className="tool-wait">실행 중</span>}
         {tool.failed && <span className="tool-fail">실패</span>}
       </button>

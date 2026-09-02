@@ -77,6 +77,59 @@ function inputText(data: unknown, fallback: string): string {
   }
 }
 
+/**
+ * 접힌 줄에 세울 한 줄 요약.
+ *
+ * 전에는 문자열화된 input 의 첫 줄을 썼다. 그런데 키가 넷 이상인 도구(Edit·Grep 등)와
+ * 선호 키가 없는 도구(TaskOutput·Skill·ToolSearch)는 JSON 통째로 찍혀서 첫 줄이 "{" 였다.
+ * `> Edit {` 이 네 줄 연달아 서면 그건 접은 것이 아니라 지운 것이다.
+ *
+ * 여기서는 원본 input 에서 **그 호출을 식별하는 값** 하나를 고른다. 키 개수는 보지 않는다 —
+ * 자세한 것은 펼쳐서 보면 되고, 이 줄은 "무엇에 대한 호출인가"만 답하면 된다.
+ */
+const GIST_KEYS = [
+  "command",
+  "file_path",
+  // pattern·query 가 path 보다 앞이다 — Grep/Glob 에서 알고 싶은 것은 "어디"가 아니라
+  // "무엇을 찾았나"다. 경로는 대개 같고 패턴이 매번 다르다.
+  "pattern",
+  "query",
+  "url",
+  "path",
+  "skill",
+  "subagent_type",
+  "task_id",
+  "prompt",
+];
+
+/** 긴 경로는 앞을 접는다 — 꼬리가 무엇인지 말하고 머리는 대개 같다. */
+function shorten(value: string): string {
+  const line = value.split("\n").find((l) => l.trim())?.trim() ?? "";
+  if (line.length <= 64) return line;
+  const parts = line.split(/[\\\/]/);
+  if (parts.length > 3) {
+    const tail = parts.slice(-3).join("/");
+    if (tail.length <= 64) return `…/${tail}`;
+  }
+  return `${line.slice(0, 61)}…`;
+}
+
+function gistOf(data: unknown, fallback: string): string {
+  const note = noteOf(data);
+  if (note) return note;
+  const input = field(data, "input");
+  if (typeof input === "string") return shorten(input);
+  if (input && typeof input === "object") {
+    const record = input as Record<string, unknown>;
+    for (const key of GIST_KEYS) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return shorten(value);
+      if (typeof value === "number") return String(value);
+    }
+  }
+  return shorten(fallback);
+}
+
 /** 이 호출이 무엇을 하려는지 한 줄로 적힌 값(있을 때만). */
 function noteOf(data: unknown): string | null {
   const input = field(data, "input");
@@ -129,6 +182,7 @@ export function toBlocks(events: LogEvent[]): Block[] {
         input: inputText(event.data, event.text ?? ""),
         output: null,
         note: noteOf(event.data),
+        gist: gistOf(event.data, event.text ?? ""),
         failed: false,
       };
       byToolId.set(id, tool);
@@ -150,7 +204,7 @@ export function toBlocks(events: LogEvent[]): Block[] {
       blocks.push({
         kind: "tool",
         key,
-        tool: { id: key, name: "결과", input: "", output: text, note: null, failed: false },
+        tool: { id: key, name: "결과", input: "", output: text, note: null, gist: "", failed: false },
       });
       continue;
     }

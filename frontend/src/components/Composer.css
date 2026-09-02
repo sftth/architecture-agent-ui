@@ -57,9 +57,11 @@
   background: none;
   border: none;
   color: var(--paper-100);
-  font-family: var(--font-mono);
+  /* 여기 들어오는 것은 대부분 한국어 지시문이다 — 그 글은 mono 보다 본문 글꼴이 잘 읽힌다.
+     끌어다 놓은 경로도 그냥 글자라 문제가 없다. */
+  font-family: var(--font-body);
   font-size: var(--text-md);
-  line-height: var(--leading-body);
+  line-height: 1.6;
   resize: vertical;
 }
 
@@ -68,8 +70,9 @@
 }
 
 .composer-input::placeholder {
+  /* 무엇을 어떻게 보내는지 알려 주는 유일한 자리다 — 흐리면 아무도 못 읽는다. */
   color: var(--paper-500);
-  opacity: 0.75;
+  opacity: 1;
 }
 
 /* 고르는 것만 모인 줄. 보내는 단추가 다음 줄로 떨어지지 않게 한 줄로 고정한다. */

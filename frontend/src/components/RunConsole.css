@@ -136,7 +136,8 @@
     calc(var(--composer-h, 180px) + var(--space-4) * 2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  line-height: var(--leading-body);
+  /* 글이 빽빽하면 도구 줄과 에이전트의 말이 한 덩어리로 보인다. */
+  line-height: 1.62;
 }
 
 /* ── 이벤트 테이프 ──────────────────────────────────────
@@ -210,12 +211,12 @@
 .say {
   display: flex;
   justify-content: flex-start;
-  margin-bottom: var(--space-3);
+  margin: var(--space-3) 0;
 }
 
 .say-bubble {
-  max-width: 92%;
-  padding: var(--space-2) var(--space-3);
+  max-width: 94%;
+  padding: var(--space-3) var(--space-4);
   border-radius: 12px 12px 12px 3px;
   background: var(--surface-raised, var(--ink-850));
   border: 1px solid var(--tick-quiet);
