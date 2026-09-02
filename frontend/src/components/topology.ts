@@ -357,3 +357,115 @@ export function alarmText(alarm: Alarm, doc: StatusDoc | null, source: string): 
   lines.push(`  출처: ${source}`);
   return lines.join("\n");
 }
+
+/* ── 설계에서 오는 토폴로지 ────────────────────────────────
+   선은 점검이 아니라 **설계**에서 나온다.
+
+   점검(status-middleware.json)이 로그 전용으로 좁혀지면서 업스트림 도달성(A05)이
+   사라졌고, 그래서 관계를 그릴 근거가 없어졌다. 하지만 "누가 누구에게 붙도록 설계됐는가"는
+   애초에 점검이 아니라 설치 확정값이 아는 것이다 — infra_confirmed.json 이 그 자리다.
+
+   그래서 이 화면은 두 곳을 겹쳐 본다.
+     설계(무엇이 어떻게 붙어 있어야 하는가) + 점검(그 대상이 지금 어떤 상태인가)
+   선이 말하는 것은 "설계상 연결"이지 "지금 트래픽이 흐른다"가 아니다. */
+
+export interface DesignNode {
+  id: string;
+  role: "web" | "was";
+  hostname: string;
+  ip: string;
+  privateIp: string | null;
+  /** 서비스 포트(web 80 / was 8180). */
+  port: number | null;
+  /** WAS 가 WEB 의 요청을 받는 포트. */
+  ajpPort: number | null;
+  instance: string | null;
+  jvmRoute: string | null;
+}
+
+export interface DesignLink {
+  from: string;
+  to: string;
+  /** 붙는 자리 — 상대의 사설 주소와 포트. */
+  address: string;
+  port: number;
+  /** 그 위로 무엇이 오가는가(AJP/1.3 등). 설계가 정한 값이다. */
+  protocol: string;
+}
+
+export interface DesignTopology {
+  nodes: DesignNode[];
+  links: DesignLink[];
+  source: string;
+}
+
+function rows(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as Record<string, unknown>[]) : [];
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v : null;
+}
+
+function int(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * 설치 확정값에서 노드와 간선을 세운다.
+ *
+ * 간선은 web 마다 모든 was 로 간다 — mod_jk 가 두 WAS 를 worker 로 물고 세션 스티키니스로
+ * 나눠 보내는 구성이라, 설계상 둘 다에 붙어 있다. 한쪽만 그리면 그림이 설계를 왜곡한다.
+ */
+export function designTopology(raw: unknown, source: string): DesignTopology | null {
+  const doc = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!doc) return null;
+
+  const mk = (r: Record<string, unknown>, role: "web" | "was", i: number): DesignNode => ({
+    id: `${role}-${i + 1}`,
+    role,
+    hostname: str(r.hostname) ?? `${role}-${i + 1}`,
+    ip: str(r.ip) ?? "",
+    privateIp: str(r.private_ip),
+    port: int(r.inst_port),
+    ajpPort: int(r.ajp_port),
+    instance: str(r.instance),
+    jvmRoute: str(r.jvm_route),
+  });
+
+  const webs = rows(doc.web_servers).map((r, i) => mk(r, "web", i));
+  const wases = rows(doc.was_servers).map((r, i) => mk(r, "was", i));
+  if (webs.length === 0 && wases.length === 0) return null;
+
+  // 프로토콜은 설계가 적어 둔 것을 그대로 쓴다 — 화면이 정하지 않는다.
+  const tomcat = doc.tomcat_standard as Record<string, unknown> | undefined;
+  const tuning = tomcat?.connector_tuning as Record<string, unknown> | undefined;
+  const protocol = str(tuning?.protocol) ?? "AJP";
+
+  const links: DesignLink[] = [];
+  for (const w of webs) {
+    for (const a of wases) {
+      const port = a.ajpPort;
+      if (port === null) continue;
+      links.push({
+        from: w.id,
+        to: a.id,
+        address: a.privateIp ?? a.ip,
+        port,
+        protocol,
+      });
+    }
+  }
+  return { nodes: [...webs, ...wases], links, source };
+}
+
+/** 설계의 마디와 점검 대상을 잇는다. 주소와 역할이 같으면 같은 것이다. */
+export function matchStatus(node: DesignNode, targets: StatusTarget[]): StatusTarget | null {
+  return (
+    targets.find(
+      (t) =>
+        (t.ip === node.ip || t.private_ip === node.ip || t.ip === node.privateIp) &&
+        (t.role ?? "").toLowerCase() === node.role,
+    ) ?? null
+  );
+}

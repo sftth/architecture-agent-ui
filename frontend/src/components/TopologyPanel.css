@@ -310,238 +310,6 @@
   .wire-dot { display: none; }
 }
 
-/* ── 랙 카드 ────────────────────────────────────────────
-   판정 색을 테두리에 두르고, 그 대상을 먼저 조이는 지표를 게이지로 세운다. */
-.rack {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  /* 넓어져도 늘어나지 않고, 좁아지면 줄어든다. */
-  flex: 0 1 176px;
-  max-width: 176px;
-  min-width: 0;
-  container-type: inline-size;
-  padding: 9px 11px 10px;
-  background: var(--ink-850);
-  /* 테두리 대신 왼쪽 모서리로 상태를 말한다 — 상태 띠와 같은 말투다.
-     넷을 다 두르면 도해가 카드 격자로 읽힌다. */
-  border: 1px solid var(--tick-quiet);
-  border-left: 3px solid var(--paper-500);
-  border-radius: var(--radius-md);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.rack:hover,
-.rack:focus-visible {
-  background: var(--ink-800);
-  outline: none;
-}
-
-.rack--ok { border-left-color: var(--gate-mint-dim); }
-.rack--warn { border-left-color: var(--signal-amber); }
-.rack--crit {
-  border-left-color: var(--gate-rose);
-  background: rgba(225, 102, 124, 0.05);
-}
-.rack--info,
-.rack--na { border-left-color: var(--paper-500); }
-
-.rack-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.rack-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-/* 상태점은 쉬는 동안 움직이지 않는다. 색과 대비만으로 등급을 말하고, 움직임은
-   상태가 실제로 바뀌는 순간에만 쓴다(.rack--changed). */
-.rack-dot { transition: background 0.2s ease, box-shadow 0.2s ease; }
-
-.rack-dot--ok { background: var(--gate-mint-dim); }
-.rack-dot--warn { background: var(--signal-amber); }
-.rack-dot--crit {
-  background: var(--gate-rose);
-  /* 위험은 깜빡이지 않고 **더 또렷하게** 앉아 있는다. */
-  box-shadow: 0 0 0 3px rgba(225, 102, 124, 0.18);
-}
-.rack-dot--info,
-.rack-dot--na { background: var(--paper-500); }
-
-@keyframes topo-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-.rack-id {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--paper-100);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 주의·위험 항목 수 — 눌러 볼 이유가 여기 있다. */
-.rack-bad {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: rgba(242, 166, 90, 0.18);
-  color: var(--signal-amber);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-}
-
-.rack--crit .rack-bad {
-  background: rgba(225, 102, 124, 0.18);
-  color: var(--gate-rose);
-}
-
-.rack-sub {
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 값 묶음. 세로 물통 대신 가로 줄로 눕혔다 — 평시에 거의 비는 지표라 세로 상자는
-   빈 자리만 남겼다. */
-.rack-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 3px;
-}
-
-/* 대표 부하 — 이름·값이 한 줄, 그 아래 얇은 막대. */
-.rack-load {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.rack-load-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.rack-load-label {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--paper-500);
-}
-
-.rack-load-pct {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-}
-
-.rack-load-pct--ok { color: var(--paper-300); }
-.rack-load-pct--warn { color: var(--signal-amber); }
-.rack-load-pct--crit { color: var(--gate-rose); }
-.rack-load-pct--info,
-.rack-load-pct--na { color: var(--paper-500); }
-
-.rack-load-track {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--ink-900);
-  overflow: hidden;
-}
-
-.rack-load-fill {
-  display: block;
-  height: 100%;
-  transition: width 0.32s ease;
-}
-
-/* 정상 부하는 조용해야 한다 — 초록으로 칠하면 평시에 온 화면이 알록달록해진다. */
-.rack-load-fill--ok { background: var(--paper-500); }
-.rack-load-fill--warn { background: var(--signal-amber); }
-.rack-load-fill--crit { background: var(--gate-rose); }
-.rack-load-fill--info,
-.rack-load-fill--na { background: var(--tick-quiet); }
-
-.rack-gauge-fill--info,
-
-.rack-gauge-pct--info,
-
-.rack-metric {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-}
-
-.rack-metric-label {
-  flex: none;
-  /* CPU·MEM 기준으로 2.1em 이었는데 LOAD 가 들어오며 "LOA / D" 로 쪼개졌다. */
-  width: 3em;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  color: var(--paper-500);
-}
-
-.rack-metric-value {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-300);
-}
-
-.rack-metric-value--warn { color: var(--signal-amber); }
-.rack-metric-value--crit { color: var(--gate-rose); }
-
-/* 포트는 값이자 상태다 — 리슨 중인지가 색에 실린다. */
-.rack-ports {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.rack-port {
-  padding: 0 5px;
-  border-radius: 3px;
-  background: var(--ink-900);
-  box-shadow: inset 0 0 0 1px var(--tick-quiet);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--paper-300);
-}
-
-/* 커넥션 수. 포트 번호에 바로 붙으면 한 숫자로 읽힌다 — 선으로 가른다. */
-.rack-port em {
-  margin-left: 5px;
-  padding-left: 5px;
-  border-left: 1px solid var(--tick-quiet);
-  font-style: normal;
-  color: var(--paper-500);
-}
-
-.rack-port--ok { color: var(--gate-mint); }
-.rack-port--warn { color: var(--signal-amber); }
-.rack-port--crit { color: var(--gate-rose); }
-.rack-port--na { color: var(--paper-500); }
-
 /* ── 롤오버 카드 ────────────────────────────────────────
    기본 title 대신. 값 옆에 기준이 서야 "이게 높은 건가"에 답이 된다. */
 /* 노드 옆에 뜬다. 흐름 밖이라 도해를 1px 도 밀지 않으므로, 자리를 잡아 뒀을 때 났던
@@ -2028,30 +1796,13 @@
 
 .wire--down .wire-label { fill: var(--gate-rose); }
 
-/* ── 좁아졌을 때 무엇을 접는가 ────────────────────────────
-   자리를 못 낸다고 스크롤로 미루지 않는다. 좁으면 덜 중요한 것부터 접고,
-   맨 끝까지 남는 것은 "누구이고 어떤 상태인가" 다. */
 
 /* 보통 폭: 전부 보인다. */
 
-@container (max-width: 168px) {
-  /* 엔진·호스트명은 접는다 — 이름과 상태가 먼저다. */
-  .rack-sub { display: none; }
-  .rack-load-label { display: none; }
 }
 
-@container (max-width: 138px) {
-  /* 포트 목록도 접는다. 상세는 눌러서 본다. */
-  .rack-ports { display: none; }
-  .rack-metric-label { width: 2.4em; }
 }
 
-@container (max-width: 112px) {
-  /* 마지막까지 남는 것: 이름 · 상태점 · 이상 건수 · 대표 부하. */
-  .rack-metrics,
-  .rack-metric,
-  .rack-why { display: none; }
-}
 
 /* 이번 회차가 무엇을 안 봤는가. 값이 비어 있는 이유를 화면이 스스로 말한다 —
    빈 상자만 세워 두면 고장으로 읽힌다. */
@@ -2068,3 +1819,126 @@
 }
 
 .topo-scope b { color: var(--signal-amber); font-weight: 600; }
+
+/* ── 그래프 마디 ──────────────────────────────────────────
+   원이다. 상자는 "무엇이 담겼나"로 읽히고 원은 "무엇과 이어졌나"로 읽힌다 —
+   이 화면이 답해야 하는 것은 뒤쪽이다.
+
+   원 안에는 역할과 이상 건수만. 지표를 안에 넣으면 다시 카드가 된다. */
+.gnode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* 폭에 따라 함께 줄고 는다. 넓다고 무한정 커지지는 않는다. */
+  flex: 0 1 clamp(64px, 14cqw, 104px);
+  transition: opacity 0.18s ease;
+}
+
+.gnode-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(48px, 11cqw, 76px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--ink-850);
+  /* 상태는 테두리 고리가 말한다. 색 하나로 등급이 읽혀야 한다. */
+  box-shadow: inset 0 0 0 2px var(--paper-500);
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.gnode--ok .gnode-disc { box-shadow: inset 0 0 0 2px var(--gate-mint-dim); }
+.gnode--warn .gnode-disc { box-shadow: inset 0 0 0 2px var(--signal-amber); }
+.gnode--crit .gnode-disc {
+  box-shadow: inset 0 0 0 2px var(--gate-rose);
+  background: rgba(225, 102, 124, 0.08);
+}
+.gnode--na .gnode-disc,
+.gnode--info .gnode-disc { box-shadow: inset 0 0 0 2px var(--tick-quiet); }
+
+.gnode:hover .gnode-disc,
+.gnode:focus-visible .gnode-disc {
+  background: var(--ink-800);
+  outline: none;
+}
+
+.gnode-role {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--paper-500);
+}
+
+.gnode--ok .gnode-role { color: var(--gate-mint); }
+.gnode--warn .gnode-role { color: var(--signal-amber); }
+.gnode--crit .gnode-role { color: var(--gate-rose); }
+
+/* 이상 건수 — 눌러 볼 이유가 여기 있다. */
+.gnode-bad {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gate-rose);
+  color: var(--ink-950);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+}
+
+.gnode--warn .gnode-bad { background: var(--signal-amber); }
+
+.gnode-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-100);
+}
+
+.gnode-host {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--paper-500);
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 좁으면 호스트명부터 접는다 — 끝까지 남는 것은 이름과 상태다. */
+@container (max-width: 380px) {
+  .gnode-host { display: none; }
+}
+
+.gnode--faded { opacity: 0.35; }
+
+/* 다시 읽었다 — 고리를 한 번 스치고 지나간다. */
+.gnode--updated .gnode-disc { animation: gnode-read 620ms ease-out; }
+
+@keyframes gnode-read {
+  0% { background: var(--ink-800); }
+  100% { background: var(--ink-850); }
+}
+
+/* 상태가 실제로 바뀌었다 — 한 번만 끌고 앉는다. */
+.gnode--changed .gnode-disc { animation: gnode-change 900ms ease-out; }
+
+@keyframes gnode-change {
+  0% { transform: scale(1); }
+  22% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gnode--updated .gnode-disc,
+  .gnode--changed .gnode-disc { animation: none; }
+}
