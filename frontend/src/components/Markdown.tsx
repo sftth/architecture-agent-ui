@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { ReactNode } from "react";
 import "./Markdown.css";
 
@@ -23,6 +23,38 @@ function Markdown({ text }: { text: string }) {
 
 export default memo(Markdown);
 
+/** 접기 없이 다 펼칠 만한 길이. 이보다 길면 보고 본문이 로그 판이 된다. */
+const CODE_LINES = 12;
+
+/**
+ * 코드·로그 덩어리.
+ *
+ * 결과 보고 안에서 이것이 길어지면 판 전체가 원시 출력 덤프처럼 보인다. 운영자가
+ * 읽어야 할 것은 결론이고, 원문은 **볼 이유가 생겼을 때** 펼치면 된다.
+ * 짧은 것은 그대로 둔다 — 세 줄짜리를 접으면 접는 동작이 더 비싸다.
+ */
+function CodeBlock({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const [open, setOpen] = useState(false);
+  if (lines.length <= CODE_LINES) {
+    return (
+      <pre className="md-code">
+        <code>{text}</code>
+      </pre>
+    );
+  }
+  return (
+    <div className="md-codewrap">
+      <pre className="md-code">
+        <code>{open ? text : lines.slice(0, CODE_LINES).join("\n")}</code>
+      </pre>
+      <button type="button" className="md-codemore" onClick={() => setOpen((v) => !v)}>
+        {open ? "접기" : `전체 보기 — ${lines.length}줄`}
+      </button>
+    </div>
+  );
+}
+
 const BLOCK_START = /^\s*(```|#{1,6}\s|>|[-*+]\s|\d+\.\s|\||---)/;
 
 function render(text: string): ReactNode[] {
@@ -40,11 +72,7 @@ function render(text: string): ReactNode[] {
       i++;
       while (i < lines.length && !/^\s*```/.test(at(i))) code.push(at(i++));
       i++; // 닫는 펜스
-      out.push(
-        <pre key={key++} className="md-code">
-          <code>{code.join("\n")}</code>
-        </pre>,
-      );
+      out.push(<CodeBlock key={key++} text={code.join("\n")} />);
       continue;
     }
 

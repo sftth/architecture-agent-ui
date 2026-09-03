@@ -205,12 +205,23 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
   onSelectAgent: (key: string) => void;
   onOpen: (id: NodeId) => void;
 }) {
+  // 카탈로그 어느 레인에도 없는데 지금 도는 것들. CLI 내장 agent(general-purpose 등)가
+  // 여기 온다 — 콘솔에서는 일하고 있는데 하네스가 조용하면 두 화면이 서로 다른 말을 한다.
+  const laneKeys = new Set([
+    ...stage.agents.map((a) => a.key),
+    ...(common?.agents ?? []).map((a) => a.key),
+  ]);
+  const outside: AgentDef[] = [...live]
+    .filter((k) => !laneKeys.has(k))
+    .map((k) => ({ key: k, role: "이 스테이지 밖에서 불린 agent" }) as AgentDef);
+
   const groups: { id: NodeId; label: string; agents: AgentDef[] }[] = [
     { id: "plan", label: "Plan/", agents: stage.agents.filter((a) => roleOf(a.key) === "plan") },
     { id: "impl", label: "Impl/", agents: stage.agents.filter((a) => roleOf(a.key) === "impl") },
     { id: "eval", label: "Eval/", agents: stage.agents.filter((a) => roleOf(a.key) === "eval") },
-    { id: "common", label: "Comm/", agents: common?.agents ?? [] },
+    { id: "common", label: "Comm/", agents: [...(common?.agents ?? []), ...outside] },
   ];
+
 
   return (
     <div className="agent-board">
@@ -224,11 +235,18 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
             {group.agents.map((agent) => {
               const running = live.has(agent.key);
               const selected = selectedAgent === agent.key;
-              const body = <><AgentGlyph /><span>{agent.key}</span>{running && <em>working</em>}</>;
+              // 도는 중이라는 말을 글자로 또 적지 않는다 — 단계 레일과 이 줄의 색이 이미 말하고 있고,
+              // 좁은 레인에서 그 글자가 세로로 깨져 오히려 읽기를 방해했다.
+              const body = (
+                <>
+                  <AgentGlyph />
+                  <span>{shortKey(agent.key)}</span>
+                </>
+              );
               return commandable.has(agent.key) ? (
-                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role} onClick={() => onSelectAgent(agent.key)}>{body}</button>
+                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`} onClick={() => onSelectAgent(agent.key)}>{body}</button>
               ) : (
-                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={agent.role}>{body}</span>
+                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`}>{body}</span>
               );
             })}
           </div>
@@ -236,6 +254,20 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
       ))}
     </div>
   );
+}
+
+/**
+ * 줄에 세울 이름.
+ *
+ * 이름은 자르지 않는다 — `middleware-…` 로 만들면 어느 impl 인지 구별이 안 되고,
+ * 그건 접은 것이 아니라 지운 것이다.
+ *
+ * 대신 **역할 꼬리**(-plan / -impl / -eval)를 뗀다. 이 줄이 어느 레인에 서 있는지가
+ * 이미 그 역할을 말하므로, 꼬리는 레인마다 같은 말의 반복이다.
+ * 전체 이름은 title 로 남는다.
+ */
+function shortKey(key: string): string {
+  return key.replace(/-(plan|impl|eval)$/, "");
 }
 
 function AgentGlyph() {

@@ -63,7 +63,6 @@ function idOf(data: unknown, field: string): string | null {
  *    이름을 둘 이상 부르는 줄은 계획표이지 "지금 그것"이 아니므로 건너뛴다.
  */
 export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
-  const known = new Set(keys);
   const open = new Map<string, string>(); // tool_use id -> agent key
 
   for (const event of events) {
@@ -71,7 +70,11 @@ export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
     if (event.kind === "tool_use") {
       const target = dispatchedAgent(event.data);
       const id = idOf(event.data, "id");
-      if (target && id && known.has(target)) open.set(id, target);
+      // 카탈로그에 있든 없든 담는다. Agent({subagent_type}) 는 **명시적인 호출**이라
+      // 모호하지 않다 — 전에는 known 에 없으면 버렸는데, 그래서 CLI 내장 agent
+      // (general-purpose 등)가 도는 동안 콘솔에는 보이고 하네스는 아무것도 안 켜졌다.
+      // 걸러야 할 것은 이 갈래가 아니라 아래의 텍스트 추정이다.
+      if (target && id) open.set(id, target);
     } else if (event.kind === "tool_result") {
       const id = idOf(event.data, "tool_use_id");
       if (id) open.delete(id);

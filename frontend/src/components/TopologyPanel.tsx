@@ -3,23 +3,22 @@ import { ioPath } from "../phases";
 import { readWorkspaceText } from "../api/client";
 import {
   Alarm,
-  Edge,
   StatusDoc,
   StatusTarget,
   VERDICT_LABEL,
   Verdict,
+  DesignLink,
+  DesignNode,
   alarmText,
   alarmsOf,
+  designTopology,
+  matchStatus,
   badChecks,
-  worst,
   checksOf,
-  edgesOf,
-  gaugeOf,
-  pick,
-  portsOf,
   summaryRows,
   text,
 } from "./topology";
+import { useFlash, usePrefersReducedMotion, usePrev } from "../motion";
 import "./TopologyPanel.css";
 
 /** 자동 갱신 간격. */
@@ -33,6 +32,16 @@ const INTERVALS = [
 const AUTO_KEY = "architecture-agent-ui:topo-auto";
 const EVERY_KEY = "architecture-agent-ui:topo-every";
 const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
+
+/**
+ * 신호를 붙일 간선 수의 상한.
+ *
+ * 흐르는 점 하나가 SMIL 애니메이션 하나다. 대상이 늘면 간선은 곱으로 늘어나므로,
+ * 어느 선을 넘으면 선만 긋고 흐름은 접는다 — 모니터링 화면이 애니메이션 때문에
+ * 느려지는 것이 가장 나쁘다.
+ */
+const FLOW_EDGE_CAP = 24;
+
 
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
@@ -82,6 +91,13 @@ export default function TopologyPanel({
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [readAt, setReadAt] = useState<number | null>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
+  // 흐름이 안 도는 이유는 대개 하나다 — OS 가 "애니메이션 줄이기"로 잡혀 있으면
+  // 브라우저가 그렇게 보고하고 CSS 가 흐름을 멈춘다. 화면이 조용히 멈춰 있으면
+  // 고장으로 읽히므로, 왜 멈췄는지 여기서 말한다.
+  const reduced = usePrefersReducedMotion();
+  // 몇 번째 읽기인가. 값이 바뀌는 순간이 곧 "방금 갱신됐다"는 신호다.
+  const [reads, setReads] = useState(0);
 
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) === "on");
   // 나이 표시를 스스로 늙게 한다 — 다시 읽지 않아도 "몇 분 전"은 계속 흘러야 한다.
@@ -89,6 +105,10 @@ export default function TopologyPanel({
   const [every, setEvery] = useState(() => Number(localStorage.getItem(EVERY_KEY)) || 30);
 
   const path = ioPath("output/{project}/status/status-middleware.json", project);
+  // 관계는 점검이 아니라 설치 확정값이 안다. 점검이 로그 전용으로 좁혀진 뒤로 여기가
+  // 유일한 근거다.
+  const designPath = ioPath("output/{project}/confirmed/infra_confirmed.json", project);
+  const [design, setDesign] = useState<ReturnType<typeof designTopology>>(null);
 
   const load = useCallback(() => {
     if (!path) {
@@ -100,6 +120,8 @@ export default function TopologyPanel({
         setDoc(file.text ? (JSON.parse(file.text) as StatusDoc) : null);
         setError(null);
         setReadAt(Date.now());
+        // 다시 읽었다는 사실 자체를 화면이 한 번 알린다(상시 맥박이 아니라).
+        setReads((n) => n + 1);
       })
       .catch((e) => {
         setDoc(null);
@@ -108,6 +130,16 @@ export default function TopologyPanel({
   }, [path]);
 
   useEffect(() => load(), [load]);
+
+  useEffect(() => {
+    if (!designPath) {
+      setDesign(null);
+      return;
+    }
+    readWorkspaceText(designPath)
+      .then((f) => setDesign(f.text ? designTopology(JSON.parse(f.text), designPath) : null))
+      .catch(() => setDesign(null));
+  }, [designPath]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -122,15 +154,29 @@ export default function TopologyPanel({
   }, [auto, every, load, path]);
 
   const targets = useMemo(() => doc?.targets ?? [], [doc]);
-  const webs = useMemo(
-    () => targets.filter((t) => (t.role ?? "").toLowerCase() === "web"),
-    [targets],
+  // 설계의 마디에 점검 결과를 얹는다 — 관계는 설계가, 상태는 점검이 안다.
+  const nodes = useMemo(
+    () =>
+      (design?.nodes ?? []).map((n) => ({ node: n, status: matchStatus(n, targets) })),
+    [design, targets],
   );
-  const wases = useMemo(
-    () => targets.filter((t) => (t.role ?? "").toLowerCase() !== "web"),
-    [targets],
-  );
-  const edges = useMemo(() => edgesOf(targets), [targets]);
+  const webs = useMemo(() => nodes.filter((n) => n.node.role === "web"), [nodes]);
+  const wases = useMemo(() => nodes.filter((n) => n.node.role === "was"), [nodes]);
+  const links = design?.links ?? [];
+
+  // 점검 회차마다 무엇을 봤는지가 다르다. 로그만 본 회차에는 포트(A02)·업스트림(A05)·
+  // 자원(R01/R02)이 아예 없어서 선도 값도 그릴 것이 없다 — 그건 고장이 아니라 그 회차가
+  // 그것을 안 본 것이다. 빈 상자 넷을 말없이 세워 두면 화면이 망가진 것처럼 보인다.
+  const missing = useMemo(() => {
+    if (targets.length === 0) return null;
+    const has = (id: string) => targets.some((t) => checksOf(t).some((c) => c.id === id));
+    const gaps = [
+      !has("A02") && !has("A05") ? "연결" : null,
+      !has("R01") && !has("R02") ? "자원" : null,
+      !has("A01") ? "기동" : null,
+    ].filter(Boolean);
+    return gaps.length > 0 ? gaps.join("·") : null;
+  }, [targets]);
   const alarms = useMemo(() => alarmsOf(doc), [doc]);
 
   // 자동으로 몇 초마다 읽는데 결과가 그보다 훨씬 오래됐다면, 더 자주 읽어도 소용이 없다.
@@ -140,58 +186,95 @@ export default function TopologyPanel({
     const t = Date.parse(doc.generated_at);
     return Number.isFinite(t) && now - t > every * 10 * 1000;
   }, [auto, doc, every, now]);
-  const byId = useMemo(() => new Map(targets.map((t) => [t.id, t])), [targets]);
+  // 툴팁·상세는 설계 마디 id 로 찾는다(web-1 …). 상태가 없는 마디도 있을 수 있다.
+  const byId = useMemo(
+    () => new Map(nodes.filter((n) => n.status).map((n) => [n.node.id, n.status!])),
+    [nodes],
+  );
+  // 손이 올라간 곳이 우선, 없으면 열어 둔 대상. 관련 경로만 밝히고 나머지는 죽인다 —
+  // 애니메이션보다 이 상호작용이 관계를 이해시키는 데 크다.
+  const activeId = hover?.id ?? picked ?? null;
+
+  // 등급별 대상 수. 판정 배지 옆에 한 번만 적는다 — 따로 띠를 두면 같은 말을 두 번 하게 된다.
+  const counts = useMemo(() => {
+    if (targets.length === 0) return null;
+    const by = (v: Verdict) => targets.filter((t) => t.verdict === v).length;
+    const parts = [
+      by("CRIT") > 0 ? `위험 ${by("CRIT")}` : null,
+      by("WARN") > 0 ? `주의 ${by("WARN")}` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? `${parts.join(" · ")} / 대상 ${targets.length}` : `대상 ${targets.length}`;
+  }, [targets]);
 
   return (
     <section className="topo">
+      {/* 머리는 두 줄이다. 한 줄에 몰아 두었더니 좁은 폭에서 제목이 1글자로 짜부라져
+          "W E B · W A S" 가 세로로 떨어졌다 — 컨트롤이 일곱인데 줄이 하나였다.
+          위는 "지금 어떤가"(정체·판정·시각), 아래는 "무엇을 할 수 있나"(점검·갱신)다. */}
       <header className="topo-head">
-        <h3 className="topo-title">WEB · WAS 상태</h3>
-        {doc && (
-          <span className={`topo-verdict topo-verdict--${low(doc.verdict)}`}>
-            {VERDICT_LABEL[doc.verdict ?? "NA"]}
-          </span>
-        )}
-        <span className="topo-note">
-          {doc?.generated_at
-            ? `${new Date(doc.generated_at).toLocaleString("ko-KR", { hour12: false })} 점검`
-            : "점검 결과 없음"}
-          {/* 이 숫자가 언제 것인지 — 없으면 안 변하는 값이 고장으로 읽힌다. */}
-          {doc?.generated_at && (
-            <span
-              className={`topo-age${stale ? " topo-age--stale" : ""}`}
-              title={
-                stale
-                  ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
-                    "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
-                  : undefined
-              }
-            >
-              {" "}· {ageText(doc.generated_at, now)}
+        <div className="topo-head-row topo-head-row--state">
+          <h3 className="topo-title">WEB · WAS</h3>
+          {doc && (
+            <span className={`topo-verdict topo-verdict--${low(doc.verdict)}`}>
+              {VERDICT_LABEL[doc.verdict ?? "NA"]}
             </span>
           )}
-          {doc?.run?.env && ` · ${doc.run.env}`}
-          {doc?.run?.mode && ` · ${doc.run.mode}`}
-        </span>
+          <span className="topo-note">
+            {doc?.generated_at
+              ? `${new Date(doc.generated_at).toLocaleString("ko-KR", { hour12: false })} 점검`
+              : "점검 결과 없음"}
+            {/* 이 숫자가 언제 것인지 — 없으면 안 변하는 값이 고장으로 읽힌다. */}
+            {doc?.generated_at && (
+              <span
+                className={`topo-age${stale ? " topo-age--stale" : ""}`}
+                title={
+                  stale
+                    ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
+                      "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
+                    : undefined
+                }
+              >
+                {" "}· {ageText(doc.generated_at, now)}
+              </span>
+            )}
+            {counts && ` · ${counts}`}
+            {doc?.run?.env && ` · ${doc.run.env}`}
+          </span>
 
-        {onCheck && (
-          <button type="button" className="topo-check" onClick={onCheck}>
-            지금 점검
-          </button>
-        )}
-        <PollControl
-          auto={auto}
-          every={every}
-          readAt={readAt}
-          onAuto={(next) => {
-            setAuto(next);
-            localStorage.setItem(AUTO_KEY, next ? "on" : "off");
-          }}
-          onEvery={(next) => {
-            setEvery(next);
-            localStorage.setItem(EVERY_KEY, String(next));
-          }}
-          onNow={load}
-        />
+          {/* 이 회차가 무엇을 안 봤는지는 알아 둘 값이지, 판 위 세 줄을 늘 차지할 값은
+              아니다. 표시로 두고 눌러서 읽는다. */}
+          {(missing || reduced) && (
+            <ScopeNote
+              missing={missing}
+              reduced={reduced}
+              open={noteOpen}
+              onToggle={() => setNoteOpen((v) => !v)}
+            />
+          )}
+        </div>
+
+        <div className="topo-head-row topo-head-row--acts">
+          {onCheck && (
+            <button type="button" className="topo-check" onClick={onCheck}>
+              지금 점검
+            </button>
+          )}
+          <PollControl
+            auto={auto}
+            every={every}
+            readAt={readAt}
+            reads={reads}
+            onAuto={(next) => {
+              setAuto(next);
+              localStorage.setItem(AUTO_KEY, next ? "on" : "off");
+            }}
+            onEvery={(next) => {
+              setEvery(next);
+              localStorage.setItem(EVERY_KEY, String(next));
+            }}
+            onNow={load}
+          />
+        </div>
       </header>
 
       {!project && <p className="topo-blank">프로젝트를 고르세요</p>}
@@ -207,7 +290,23 @@ export default function TopologyPanel({
       {doc && targets.length === 0 && <p className="topo-blank">점검 대상이 없습니다</p>}
 
       {targets.length > 0 && (
-        <Tiers webs={webs} wases={wases} edges={edges} onPick={setPicked} onHover={setHover} />
+        <>
+          <Tiers
+            webs={webs}
+            wases={wases}
+            links={links}
+            activeId={activeId}
+            reads={reads}
+            onPick={setPicked}
+            onHover={setHover}
+          />
+        </>
+      )}
+
+      {/* 손이 올라간 대상의 요약. 전에는 노드 옆에 떠서 **강조해 놓은 그 경로를 덮었다** —
+          관계를 보라고 밝혀 놓고 그 위에 판을 얹은 셈이었다. 도해 아래 제자리에 둔다. */}
+      {hover && byId.get(hover.id) && (
+        <HoverCard target={byId.get(hover.id)!} x={hover.x} y={hover.y} links={links} />
       )}
 
       {alarms.length > 0 && (
@@ -220,12 +319,10 @@ export default function TopologyPanel({
         />
       )}
 
-      {hover && byId.get(hover.id) && (
-        <HoverCard target={byId.get(hover.id)!} x={hover.x} y={hover.y} edges={edges} />
-      )}
+
 
       {picked && byId.get(picked) && (
-        <Detail target={byId.get(picked)!} edges={edges} onClose={() => setPicked(null)} />
+        <Detail target={byId.get(picked)!} links={links} onClose={() => setPicked(null)} />
       )}
     </section>
   );
@@ -242,6 +339,7 @@ function PollControl({
   auto,
   every,
   readAt,
+  reads,
   onAuto,
   onEvery,
   onNow,
@@ -249,10 +347,14 @@ function PollControl({
   auto: boolean;
   every: number;
   readAt: number | null;
+  /** 읽기 횟수. 바뀌는 순간이 곧 "지금 읽었다" 이다. */
+  reads: number;
   onAuto: (next: boolean) => void;
   onEvery: (next: number) => void;
   onNow: () => void;
 }) {
+  // 늘 뛰는 맥박 대신, 실제로 읽은 순간에만 한 번 밝아진다.
+  const read = useFlash(reads, 520);
   return (
     <div className="poll">
       <div
@@ -281,19 +383,24 @@ function PollControl({
 
       {auto ? (
         <span className="poll-auto">
-          <select
-            className="poll-every"
-            value={every}
-            aria-label="갱신 간격"
-            onChange={(e) => onEvery(Number(e.target.value))}
-          >
+          {/* 콤보를 열어 고르는 값이 아니다 — 다섯 칸짜리 눈금이라 지금 어디에 서 있는지가
+              열지 않고도 보인다. 입력판의 effort 트랙과 같은 말투를 쓴다.
+              왼쪽이 잦고 오른쪽이 뜸하다. */}
+          <span className="poll-every" role="group" aria-label="갱신 간격">
             {INTERVALS.map((i) => (
-              <option key={i.sec} value={i.sec}>
-                {i.label}마다 다시 읽기
-              </option>
+              <button
+                key={i.sec}
+                type="button"
+                className={`poll-tick${i.sec === every ? " poll-tick--on" : ""}`}
+                aria-pressed={i.sec === every}
+                aria-label={`${i.label}마다`}
+                title={`${i.label}마다 다시 읽기`}
+                onClick={() => onEvery(i.sec)}
+              />
             ))}
-          </select>
-          <span className="poll-live" aria-hidden="true" />
+          </span>
+          <span className="poll-every-label">{INTERVALS.find((i) => i.sec === every)?.label}</span>
+          <span className={`poll-live${read ? " poll-live--read" : ""}`} aria-hidden="true" />
         </span>
       ) : (
         <button type="button" className="poll-now" onClick={onNow}>
@@ -309,29 +416,103 @@ function PollControl({
 }
 
 /**
- * 두 층과 그 사이의 선.
+ * 이번 회차의 범위 안내.
  *
- * 선은 자리를 재서 긋는다 — 칸이 접히거나 폭이 바뀌면 카드가 움직이므로, 위치를 실제로
- * 측정한 뒤에야 어디서 어디로 그을지 알 수 있다.
+ * 늘 펼쳐 두면 판 위 세 줄을 차지하는데, 매번 읽을 값은 아니다. 표시로 두고 눌러서 읽는다 —
+ * 다만 표시 자체는 조용히 눈에 띄어야 한다. 값이 비어 있는 이유가 여기 있기 때문이다.
+ */
+function ScopeNote({
+  missing,
+  reduced,
+  open,
+  onToggle,
+}: {
+  missing: string | null;
+  reduced: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <span className="scope">
+      <button
+        type="button"
+        className={`scope-mark${open ? " scope-mark--on" : ""}`}
+        aria-expanded={open}
+        aria-label="이번 점검 범위"
+        onClick={onToggle}
+      >
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path
+            d="M8 5.6v3.2M8 11.2h.01"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      </button>
+      {open && (
+        <span className="scope-pop" role="note">
+          {missing && (
+            <>
+              이번 점검은 <b>로그</b>만 봤습니다. 선과 주소·포트·프로토콜은{" "}
+              <b>설계 확정값</b>에서 그린 것이라 “이렇게 붙도록 설계됐다”는 뜻이고, 지금
+              실제로 오가는 트래픽을 보여 주는 것은 아닙니다. {missing} 상태는 이 회차에
+              수집되지 않았습니다.
+            </>
+          )}
+          {reduced && (
+            <span className="scope-line">
+              이 컴퓨터가 <b>애니메이션 줄이기</b>로 설정돼 있어 연결선의 흐름을 세 배 느리게
+              돌리고 있습니다. 원래 속도로 보시려면 Windows 설정 → 접근성 → 시각 효과 →
+              애니메이션 효과를 켜세요.
+            </span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** 설계의 마디 + 그 마디의 지금 상태. */
+export interface Placed {
+  node: DesignNode;
+  status: StatusTarget | null;
+}
+
+/**
+ * 그래프.
+ *
+ * 마디는 원이다 — 상자는 "무엇이 담겼나"로 읽히고 원은 "무엇이 무엇과 이어졌나"로 읽힌다.
+ * 이 화면이 답해야 하는 것은 뒤쪽이다.
+ *
+ * 관계는 **설계**에서 온다(infra_confirmed.json). 선은 "설계상 이렇게 붙어 있다"는 뜻이고,
+ * 흐르는 신호는 "연결되어 있다"는 표시이지 "지금 이만큼 트래픽이 흐른다"가 아니다 —
+ * 실제 통신량은 이 점검이 보지 않는다.
  */
 function Tiers({
   webs,
   wases,
-  edges,
+  links,
+  activeId,
+  reads,
   onPick,
   onHover,
 }: {
-  webs: StatusTarget[];
-  wases: StatusTarget[];
-  edges: Edge[];
+  webs: Placed[];
+  wases: Placed[];
+  links: DesignLink[];
+  activeId: string | null;
+  reads: number;
   onPick: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
-  const [boxes, setBoxes] = useState<Record<string, { x: number; y: number; w: number; h: number }>>(
-    {},
-  );
+  const [boxes, setBoxes] = useState<
+    Record<string, { x: number; y: number; w: number; h: number }>
+  >({});
 
   const measure = useCallback(() => {
     const wrap = wrapRef.current;
@@ -343,7 +524,6 @@ function Tiers({
       next[id] = { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height };
     }
     setBoxes((prev) => {
-      // 같은 자리면 상태를 건드리지 않는다 — ResizeObserver 가 스스로를 다시 부른다.
       const keys = Object.keys(next);
       if (
         keys.length === Object.keys(prev).length &&
@@ -352,30 +532,18 @@ function Tiers({
           const b = next[k];
           return a && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
         })
-      ) {
+      )
         return prev;
-      }
       return next;
     });
   }, []);
 
-  // 그릴 때마다 다시 잰다. 대상이 몇 개뿐이라 값이 싸고, 같은 자리면 상태를 건드리지
-  // 않으므로 다시 그리지도 않는다.
   useLayoutEffect(measure);
 
-  // 웹폰트는 첫 그림 뒤에 도착한다. 그때 글줄 높이가 바뀌면서 아래 층이 통째로
-  // 내려앉는데, 그것만으로는 아무 렌더도 일어나지 않아 선이 허공에 남는다.
   useEffect(() => {
     document.fonts?.ready.then(measure).catch(() => undefined);
   }, [measure]);
 
-  /**
-   * 칸만 지켜보면 늦는다.
-   *
-   * 판의 크기가 그대로여도 카드는 움직인다 — 웹폰트가 늦게 도착하면 글줄 높이가 바뀌고,
-   * 그러면 아래 층 전체가 내려앉는다. 처음 잰 자리에 선을 붙여 두면 선이 카드에서
-   * 떨어진 채로 남는다. 그래서 카드 하나하나를 지켜본다(넷 남짓이라 값이 싸다).
-   */
   const observerRef = useRef<ResizeObserver | null>(null);
   if (observerRef.current === null && typeof ResizeObserver !== "undefined") {
     observerRef.current = new ResizeObserver(() => measure());
@@ -401,38 +569,73 @@ function Tiers({
     }
   }, []);
 
-  const lines = edges
-    .map((e) => {
-      const a = boxes[e.from];
-      const b = boxes[e.to];
+  const drawn = links
+    .map((l) => {
+      const a = boxes[l.from];
+      const b = boxes[l.to];
       if (!a || !b) return null;
       const x1 = a.x + a.w / 2;
       const y1 = a.y + a.h;
       const x2 = b.x + b.w / 2;
       const y2 = b.y;
       const mid = (y1 + y2) / 2;
-      return { e, d: `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}` };
+      return {
+        l,
+        d: `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`,
+        // 같은 가운데에 몰면 이름표가 겹친다. 간선마다 경로를 따라 다른 지점에 놓는다.
+        mx: x1 + (x2 - x1) * 0.5,
+        my: mid,
+        x1,
+        y1,
+        x2,
+        y2,
+      };
     })
-    .filter((l): l is { e: Edge; d: string } => l !== null);
+    .filter(
+      (x): x is {
+        l: DesignLink;
+        d: string;
+        mx: number;
+        my: number;
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+      } => x !== null,
+    );
 
-  const row = (list: StatusTarget[], tier: string) => (
+  // 층 이름표(WEB/WAS)는 두지 않는다 — 원 안에 이미 역할이 적혀 있고, 위아래 배치가
+  // 그 자체로 층을 말한다. 왼쪽에 한 번 더 적으면 같은 말의 반복이다.
+  const tier = (list: Placed[]) => (
     <div className="topo-row">
-      <span className="topo-tier">{tier}</span>
       <div className="topo-nodes">
         {list.length === 0 && <span className="topo-none">없음</span>}
-        {list.map((t) => (
-          <Node key={t.id} target={t} register={register} onPick={onPick} onHover={onHover} />
+        {list.map((p) => (
+          <GraphNode
+            key={p.node.id}
+            placed={p}
+            register={register}
+            reads={reads}
+            faded={
+              activeId !== null &&
+              activeId !== p.node.id &&
+              !links.some(
+                (l) =>
+                  (l.from === activeId && l.to === p.node.id) ||
+                  (l.to === activeId && l.from === p.node.id),
+              )
+            }
+            onPick={onPick}
+            onHover={onHover}
+          />
         ))}
       </div>
     </div>
   );
 
   return (
-    // 스크롤은 바깥이 맡고, 좌표계는 안쪽이 맡는다. 한 겹으로 합치면 스크롤한 만큼
-    // 선이 어긋난다 — 안에 절대 배치한 판은 내용 높이가 아니라 보이는 높이만 덮는다.
     <div className="topo-map">
       <div className="topo-canvas" ref={wrapRef}>
-        {/* 선은 카드 뒤에 깔린다 — 카드를 가리면 값을 읽는 데 방해가 된다. */}
         <svg className="topo-wires" aria-hidden="true">
           <defs>
             <marker
@@ -454,132 +657,128 @@ function Tiers({
               />
             </marker>
           </defs>
-          {lines.map(({ e, d }, i) => (
-            <g key={`${e.from}-${e.to}-${e.port}`} className={`wire wire--${e.ok ? "up" : "down"}`}>
-              <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
-              {/* 닿는 선에만 흐름을 얹는다. 닿지 않는 선이 흐르면 그림이 거짓말을 한다. */}
-              {e.ok &&
-                [0, 1, 2].map((k) => (
-                  <circle key={k} className="wire-dot" r="2.6">
-                    <animateMotion dur="2.4s" repeatCount="indefinite" begin={`${k * 0.8}s`}>
-                      <mpath href={`#wire-${i}`} />
-                    </animateMotion>
-                  </circle>
-                ))}
-            </g>
-          ))}
+          {drawn.map(({ l, d, x1, y1, x2, y2 }, i) => {
+            const related = activeId === null || l.from === activeId || l.to === activeId;
+            // 이름표는 목적지 쪽으로 치우쳐 놓는다 — 여러 선이 한 마디에서 갈라져 나와도
+            // 도착지가 다르므로 서로 떨어진다.
+            const t = 0.68;
+            const lx = x1 + (x2 - x1) * t;
+            const ly = y1 + (y2 - y1) * t;
+            return (
+              <g
+                key={`${l.from}-${l.to}-${l.port}`}
+                className={`wire wire--up${
+                  activeId !== null ? (related ? " wire--on" : " wire--off") : ""
+                }`}
+              >
+                <path id={`wire-${i}`} className="wire-path" d={d} markerEnd="url(#topo-tip)" />
+                {/*
+                  흐름은 CSS offset-path 로 그린다.
+                  전에는 SMIL <animateMotion><mpath href>를 썼는데, Chrome 은 mpath 에서
+                  href 를 보지 않는다(xlink:href 를 요구한다) — 그래서 점이 아예 움직이지
+                  않았다. offset-path 는 transform 으로 도는 데다 prefers-reduced-motion 을
+                  CSS 한 곳에서 지킬 수 있다.
+
+                  선마다 출발을 어긋나게 준다. 한꺼번에 흐르면 "맥박"이지만 번갈아 흐르면
+                  요청이 두 WAS 로 나뉘어 간다는 뜻이 된다 — mod_jk 가 실제로 하는 일이다.
+                */}
+                {drawn.length <= FLOW_EDGE_CAP && (
+                  <circle
+                    className="wire-dot"
+                    r="2.6"
+                    style={
+                      {
+                        offsetPath: `path('${d}')`,
+                        // 주기는 CSS 가 정한다(인라인으로 박으면 미디어 쿼리가 못 바꾼다).
+                        // 여기서는 "몇 번째 선인지"만 넘겨 출발을 어긋나게 한다.
+                        "--flow-i": i % drawn.length,
+                        "--flow-n": drawn.length,
+                      } as React.CSSProperties
+                    }
+                  />
+                )}
+
+                {/* 설계가 정한 붙는 자리 — 주소·포트·프로토콜. 고른 경로에만 적는다. */}
+                {activeId !== null && related && (
+                  <text className="wire-label" x={lx} y={ly} textAnchor="middle">
+                    {l.address}:{l.port} · {l.protocol}
+                  </text>
+                )}
+              </g>
+            );
+          })}
         </svg>
 
-        {row(webs, "WEB")}
+        {tier(webs)}
         <div className="topo-gap" aria-hidden="true" />
-        {row(wases, "WAS")}
+        {tier(wases)}
       </div>
     </div>
   );
 }
 
-function Node({
-  target,
+/**
+ * 그래프의 마디 하나 — 원이다.
+ *
+ * 원 안에는 역할과 이상 건수만 둔다. 지표를 원 안에 밀어 넣으면 다시 카드가 된다.
+ * 자세한 것은 손을 올렸을 때(툴팁)와 눌렀을 때(상세)에 있다.
+ */
+function GraphNode({
+  placed,
   register,
+  reads,
+  faded,
   onPick,
   onHover,
 }: {
-  target: StatusTarget;
+  placed: Placed;
   register: (id: string, el: HTMLElement | null) => void;
+  reads: number;
+  faded: boolean;
   onPick: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
-  const v = low(target.verdict);
-  const bad = badChecks(target);
-  const gauge = gaugeOf(target);
-  const ports = portsOf(target);
-  const cpu = pick(target, "R01");
-  const mem = pick(target, "R02");
+  const { node, status } = placed;
+  const verdict: Verdict = status?.verdict ?? "NA";
+  const v = low(verdict);
+  const bad = status ? badChecks(status).length : 0;
+  const updated = useFlash(reads, 620);
+  const before = usePrev(verdict);
+  const changed = useFlash(verdict, 900) && before !== undefined;
 
   const enter = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
-    onHover({ id: target.id, x: r.right, y: r.top });
+    onHover({ id: node.id, x: r.right, y: r.top });
   };
 
   return (
     <button
       type="button"
-      ref={(el) => register(target.id, el)}
-      className={`rack rack--${v}`}
-      onClick={() => onPick(target.id)}
+      ref={(el) => register(node.id, el)}
+      className={
+        `gnode gnode--${v}` +
+        `${updated ? " gnode--updated" : ""}` +
+        `${changed ? " gnode--changed" : ""}` +
+        `${faded ? " gnode--faded" : ""}`
+      }
+      onClick={() => onPick(node.id)}
       onMouseEnter={(e) => enter(e.currentTarget)}
       onMouseLeave={() => onHover(null)}
       onFocus={(e) => enter(e.currentTarget)}
       onBlur={() => onHover(null)}
+      /* title 을 두지 않는다 — 브라우저 기본 툴팁이 디자인된 툴팁 위에 하나 더 뜬다.
+         호스트·주소는 그 툴팁이 이미 적고 있다. */
     >
-      <span className="rack-head">
-        <span className={`rack-dot rack-dot--${v}`} aria-hidden="true" />
-        <span className="rack-id">{target.id}</span>
-        {bad.length > 0 && <span className="rack-bad">{bad.length}</span>}
+      <span className="gnode-disc">
+        <span className="gnode-role">{node.role.toUpperCase()}</span>
+        {bad > 0 && <span className="gnode-bad">{bad}</span>}
       </span>
-
-      <span className="rack-sub">
-        {target.engine ?? "?"}
-        {target.hostname ? ` · ${target.hostname}` : ""}
-      </span>
-
-      {/* 테두리가 붉은데 보이는 값이 전부 초록일 수 있다 — 판정이 로그·기동처럼 카드에
-          세우지 않은 항목에서 나올 때다. 그 이유를 카드가 직접 말해야 한다. */}
-      {bad.length > 0 && (
-        <span className={`rack-why rack-why--${low(worst(bad.map((c) => c.verdict)))}`}>
-          {bad[0].name.replace(/\s*\([^)]*\)\s*$/, "")}
-          {bad[0].value !== null && bad[0].value !== undefined && ` ${bad[0].value}`}
-          {bad.length > 1 && <em>외 {bad.length - 1}건</em>}
-        </span>
-      )}
-
-      <span className="rack-body">
-        {/* 대표 게이지 — 무엇이 이 대상을 먼저 조이는지는 역할마다 다르다. */}
-        {gauge && (
-          <span className="rack-gauge">
-            <span className="rack-gauge-bar">
-              <span
-                className={`rack-gauge-fill rack-gauge-fill--${low(gauge.verdict)}`}
-                style={{ height: `${gauge.pct}%` }}
-              />
-            </span>
-            <span className={`rack-gauge-pct rack-gauge-pct--${low(gauge.verdict)}`}>
-              {gauge.value}
-            </span>
-            <span className="rack-gauge-label">{gauge.label}</span>
-          </span>
-        )}
-
-        <span className="rack-side">
-          <Metric label="CPU" value={cpu ? String(cpu.value ?? "—") : "—"} verdict={cpu?.verdict} />
-          <Metric
-            label="MEM"
-            value={mem && mem.value !== null && mem.value !== undefined ? `${mem.value}%` : "—"}
-            verdict={mem?.verdict}
-          />
-          <span className="rack-ports">
-            {ports.length === 0 && <span className="rack-port rack-port--na">포트 없음</span>}
-            {ports.map((p) => (
-              <span key={`${p.kind}${p.port}`} className={`rack-port rack-port--${low(p.verdict)}`}>
-                {p.kind}:{p.port}
-                {p.conns !== null && <em title="현재 커넥션 수">{p.conns}</em>}
-              </span>
-            ))}
-          </span>
-        </span>
-      </span>
+      <span className="gnode-name">{node.id}</span>
+      <span className="gnode-host">{node.hostname}</span>
     </button>
   );
 }
 
-function Metric({ label, value, verdict }: { label: string; value: string; verdict?: Verdict }) {
-  return (
-    <span className="rack-metric">
-      <span className="rack-metric-label">{label}</span>
-      <span className={`rack-metric-value rack-metric-value--${low(verdict)}`}>{value}</span>
-    </span>
-  );
-}
 
 /**
  * 롤오버 카드.
@@ -592,21 +791,24 @@ function HoverCard({
   target,
   x,
   y,
-  edges,
+  links,
 }: {
   target: StatusTarget;
   x: number;
   y: number;
-  edges: Edge[];
+  links: DesignLink[];
 }) {
-  const rows = summaryRows(target);
-  const out = edges.filter((e) => e.from === target.id);
-  const inc = edges.filter((e) => e.to === target.id);
+  // 자리에 맞게 앞쪽만. 전부는 눌러서 여는 상세에 있다.
+  const rows = summaryRows(target).slice(0, 7);
+  // 설계상 이 마디가 붙는 곳. "지금 닿는가"가 아니라 "이렇게 붙도록 설계됐다"이다.
+  const out = links.filter((l) => l.from === target.id);
+  const inc = links.filter((l) => l.to === target.id);
 
-  // 오른쪽으로 넘치면 왼쪽에 붙인다.
-  const width = 330;
+  // 화면이 좁으면 판도 좁아진다. 넘치면 왼쪽에 붙이고, 아래로도 넘치면 끌어올린다 —
+  // 어느 쪽으로도 화면 밖으로 나가지 않는다.
+  const width = Math.min(330, Math.max(210, window.innerWidth - 48));
   const left = x + 12 + width > window.innerWidth ? Math.max(8, x - width - 24) : x + 12;
-  const top = Math.max(8, Math.min(y, window.innerHeight - 360));
+  const top = Math.max(8, Math.min(y, window.innerHeight - 260));
 
   return (
     <div className="hovercard" style={{ left, top, width }} role="tooltip">
@@ -642,20 +844,14 @@ function HoverCard({
 
       {(out.length > 0 || inc.length > 0) && (
         <div className="hovercard-links">
-          {out.map((e) => (
-            <span
-              key={`o${e.to}${e.port}`}
-              className={`hovercard-link hovercard-link--${e.ok ? "up" : "down"}`}
-            >
-              → {e.to}:{e.port} {e.ok ? "도달" : "불가"}
+          {out.map((l) => (
+            <span key={`o${l.to}${l.port}`} className="hovercard-link hovercard-link--up">
+              → {l.to} · {l.address}:{l.port} · {l.protocol}
             </span>
           ))}
-          {inc.map((e) => (
-            <span
-              key={`i${e.from}${e.port}`}
-              className={`hovercard-link hovercard-link--${e.ok ? "up" : "down"}`}
-            >
-              ← {e.from} {e.ok ? "도달" : "불가"}
+          {inc.map((l) => (
+            <span key={`i${l.from}${l.port}`} className="hovercard-link hovercard-link--up">
+              ← {l.from} · :{l.port} · {l.protocol}
             </span>
           ))}
         </div>
@@ -669,11 +865,11 @@ function HoverCard({
 /** 눌렀을 때의 상세 — 점검 항목을 값·기준과 함께 전부 편다. */
 function Detail({
   target,
-  edges,
+  links,
   onClose,
 }: {
   target: StatusTarget;
-  edges: Edge[];
+  links: DesignLink[];
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -685,7 +881,7 @@ function Detail({
   }, [onClose]);
 
   const rows = checksOf(target);
-  const links = edges.filter((e) => e.from === target.id || e.to === target.id);
+  const mine = links.filter((l) => l.from === target.id || l.to === target.id);
 
   return (
     <div className="topo-scrim" onClick={onClose}>
@@ -715,12 +911,12 @@ function Detail({
             </p>
           )}
 
-          {links.length > 0 && (
+          {mine.length > 0 && (
             <p className="topo-ref">
-              연결{" "}
-              {links.map((e) => (
-                <code key={`${e.from}-${e.to}-${e.port}`}>
-                  {e.from} → {e.to}:{e.port} {e.ok ? "도달" : "불가"}
+              설계상 연결{" "}
+              {mine.map((l) => (
+                <code key={`${l.from}-${l.to}-${l.port}`}>
+                  {l.from} → {l.to} · {l.address}:{l.port} · {l.protocol}
                 </code>
               ))}
             </p>
@@ -815,9 +1011,17 @@ function AlarmList({
         <span className="alarms-title">알람</span>
         <span className="alarms-count">{alarms.length}</span>
         {crit > 0 && <span className="alarms-crit">위험 {crit}</span>}
-        <span className="alarms-hint">
-          {open ? "끌어다 놓거나 「보내기」로 지시문에 넣습니다" : "눌러서 펼치기"}
-        </span>
+        {/* 접혀 있어도 가장 심각한 한 건은 밖에 세운다. 심각한 것이 접힘 뒤에 숨으면
+            "접었다"가 아니라 "안 보인다"가 된다. */}
+        {!open && alarms[0] && (
+          <span className="alarms-lead">
+            <span className="alarms-lead-target">{alarms[0].target.id}</span>
+            <span className="alarms-lead-name">{alarms[0].check.name}</span>
+          </span>
+        )}
+        {open && (
+          <span className="alarms-hint">끌어다 놓거나 「보내기」로 지시문에 넣습니다</span>
+        )}
       </button>
 
       {open && (

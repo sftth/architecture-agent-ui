@@ -3,12 +3,19 @@ import "./SideResizer.css";
 
 const KEY = "architecture-agent-ui:side-width";
 const MIN = 380;
-/** 화면의 이만큼을 넘으면 가운데 칸이 못 쓰게 좁아진다. */
-const MAX_RATIO = 0.68;
+/**
+ * 가운데 칸이 반드시 남겨야 할 폭.
+ *
+ * 0.68 까지 열어 뒀더니 운영 화면에서 가운데가 480px 로 짜부라져 토폴로지가 통째로
+ * 사라졌다(노드 넷 중 하나만 보였다). 비율 대신 **절대 폭**으로 바닥을 깐다 — 가운데가
+ * 담아야 하는 것은 두 층짜리 도해라, 화면이 넓어진다고 요구 폭이 줄지 않는다.
+ */
+const CENTER_MIN = 620;
 const DEFAULT = 460;
 
 function clamp(width: number): number {
-  const max = Math.max(MIN, Math.round(window.innerWidth * MAX_RATIO));
+  // 좁은 화면에서는 가운데를 다 내주더라도 이 칸이 최소 폭은 갖게 둔다.
+  const max = Math.max(MIN, window.innerWidth - CENTER_MIN);
   return Math.min(max, Math.max(MIN, Math.round(width)));
 }
 

@@ -108,3 +108,25 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* 긴 코드·로그는 접어 둔다. 결과 보고가 원시 출력 판이 되면 안 된다. */
+.md-codewrap {
+  position: relative;
+}
+
+.md-codemore {
+  margin-top: 4px;
+  padding: 2px 10px;
+  background: var(--ink-850);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.md-codemore:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
