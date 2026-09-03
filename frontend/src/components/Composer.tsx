@@ -147,11 +147,23 @@ export default function Composer({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          // 실행이 실제 서버를 건드릴 수 있어 맨 Enter로는 보내지 않는다.
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ready) {
+          if (e.key !== "Enter") return;
+
+          // 한글·일본어는 조합 중에도 Enter 가 온다. 그 Enter 는 "글자를 확정한다"는
+          // 뜻이지 "보낸다"가 아니다 — 거르지 않으면 한글을 치다가 실행이 나간다.
+          if (e.nativeEvent.isComposing) return;
+
+          // Shift 는 줄바꿈이다. 그대로 흘려 보낸다.
+          if (e.shiftKey) return;
+
+          if (!ready) {
+            // 보낼 수 없는 상태에서 Enter 가 줄바꿈으로 새는 것이 아니라, 아무 일도
+            // 일어나지 않는 편이 낫다 — 왜 안 갔는지는 단추의 상태가 말한다.
             e.preventDefault();
-            onRun();
+            return;
           }
+          e.preventDefault();
+          onRun();
         }}
         onDragOver={(e) => {
           // preventDefault를 안 하면 브라우저가 기본 동작(파일 열기)을 하고 drop이 안 온다.
@@ -168,7 +180,7 @@ export default function Composer({
         }}
         placeholder={
           agent
-            ? `@${agent.key} — Ctrl+Enter 실행 · 파일 끌어다 놓기`
+            ? `@${agent.key} — Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기`
             : "plan을 고르세요"
         }
         spellCheck={false}
@@ -216,7 +228,7 @@ export default function Composer({
             className="composer-send"
             disabled={!ready}
             onClick={onRun}
-            title="실행 (Ctrl+Enter)"
+            title="실행 (Enter)"
             aria-label="실행"
           >
             <ArrowUpIcon />
