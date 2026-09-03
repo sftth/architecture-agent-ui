@@ -42,8 +42,6 @@ const ALARM_KEY = "architecture-agent-ui:topo-alarms-open";
  */
 const FLOW_EDGE_CAP = 24;
 
-/** 신호 하나가 선을 지나는 데 걸리는 시간. 급하지 않게, 그러나 멈춰 보이지 않게. */
-const FLOW_SEC = 3.2;
 
 const low = (v?: Verdict | string) => String(v ?? "NA").toLowerCase();
 
@@ -466,9 +464,9 @@ function ScopeNote({
           )}
           {reduced && (
             <span className="scope-line">
-              이 컴퓨터가 <b>애니메이션 줄이기</b>로 설정돼 있어 연결선의 흐름 표시를 멈춰
-              두었습니다. 보시려면 Windows 설정 → 접근성 → 시각 효과 → 애니메이션 효과를
-              켜세요.
+              이 컴퓨터가 <b>애니메이션 줄이기</b>로 설정돼 있어 연결선의 흐름을 세 배 느리게
+              돌리고 있습니다. 원래 속도로 보시려면 Windows 설정 → 접근성 → 시각 효과 →
+              애니메이션 효과를 켜세요.
             </span>
           )}
         </span>
@@ -691,8 +689,10 @@ function Tiers({
                     style={
                       {
                         offsetPath: `path('${d}')`,
-                        animationDelay: `${((i % drawn.length) * FLOW_SEC) / drawn.length}s`,
-                        animationDuration: `${FLOW_SEC}s`,
+                        // 주기는 CSS 가 정한다(인라인으로 박으면 미디어 쿼리가 못 바꾼다).
+                        // 여기서는 "몇 번째 선인지"만 넘겨 출발을 어긋나게 한다.
+                        "--flow-i": i % drawn.length,
+                        "--flow-n": drawn.length,
                       } as React.CSSProperties
                     }
                   />
