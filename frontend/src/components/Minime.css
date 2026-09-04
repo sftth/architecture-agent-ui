@@ -8,6 +8,9 @@
   /* 시트 기본값(어두운 바탕용). 밝은 바탕에서 사라지는 둘만 아래에서 덮는다. */
   --collar: #e9eef6;
   --gear: #3b4a6b;
+  /* 한 바퀴(--cycle 은 TSX 가 상태별로 준다) × 느리게 배율. 줄이기 설정이면 2. */
+  --slow: 1;
+  --period: calc(var(--cycle, 900ms) * var(--slow));
 }
 
 .minime > svg {
@@ -29,33 +32,45 @@
 :root[data-theme="light"] .minime { --collar: #c9d5e1; --gear: #5b6b8f; }
 
 /* ── 상태에 따른 채도 ────────────────────────────────
-   안 도는 사람은 물러나 있어야 도는 사람이 보인다. 대기 비트를 받은 순간만 제 색으로. */
+   안 도는 사람은 물러나 있어야 도는 사람이 보인다. 빈둥거리는 순간만 제 색으로. */
 .minime--idle { filter: saturate(0.55); opacity: 0.85; }
 .minime--doze,
 .minime--stopped { filter: saturate(0.4); opacity: 0.8; }
 .minime--ghost { filter: grayscale(1); opacity: 0.4; }
 
-/* ── 프레임 애니 — 겹친 svg 를 steps(1) 로 번갈아 ─────── */
-.minime--f2 > svg {
-  opacity: 0;
-  animation: minime-cycle2 0.8s steps(1) infinite;
-}
-.minime--f2 > svg:nth-child(2) { animation-delay: -0.4s; }
-
-/* 타이핑은 숨보다 빠르다 */
-.minime--typing > svg { animation-duration: 0.5s; }
-.minime--typing > svg:nth-child(2) { animation-delay: -0.25s; }
-
+/* ── 프레임 애니 — 겹친 svg 를 steps(1) 로 번갈아 ───────
+   global.css 가 줄이기 설정에서 모든 animation 을 0.001ms·1회로 만드는데, 그러면 opacity
+   애니가 끝난 뒤 전부 투명으로 돌아가 사람이 사라진다. 이 저장소의 규칙은 "멈추지 말고
+   늦춘다"(b1a7f61)라, 여기서 길이와 반복을 !important 로 되찾고 --slow 로 늦춘다. */
+.minime--f2 > svg,
 .minime--f4 > svg {
   opacity: 0;
-  animation: minime-cycle4 0.48s steps(1) infinite;
+  animation-timing-function: steps(1);
+  animation-duration: var(--period) !important;
+  animation-iteration-count: infinite !important;
 }
-.minime--f4 > svg:nth-child(2) { animation-delay: -0.12s; }
-.minime--f4 > svg:nth-child(3) { animation-delay: -0.24s; }
-.minime--f4 > svg:nth-child(4) { animation-delay: -0.36s; }
+
+.minime--f2 > svg { animation-name: minime-cycle2; }
+.minime--f2 > svg:nth-child(2) { animation-delay: calc(var(--period) * -0.5); }
+
+.minime--f4 > svg { animation-name: minime-cycle4; }
+.minime--f4 > svg:nth-child(2) { animation-delay: calc(var(--period) * -0.25); }
+.minime--f4 > svg:nth-child(3) { animation-delay: calc(var(--period) * -0.5); }
+.minime--f4 > svg:nth-child(4) { animation-delay: calc(var(--period) * -0.75); }
 
 /* 제자리 달리기 — 몸이 좌우로 1px 기운다 */
-.minime--run { animation: minime-lean 0.48s steps(2) infinite; }
+.minime--run {
+  animation: minime-lean steps(2) infinite;
+  animation-duration: var(--period) !important;
+  animation-iteration-count: infinite !important;
+}
+
+/* 어슬렁 — 한 걸음 나갔다 돌아온다. 슬롯(64px) 안이라 옆 사람과 겹치지 않는다. */
+.minime--walk {
+  animation: minime-stroll ease-in-out infinite;
+  animation-duration: calc(var(--period) * 3) !important;
+  animation-iteration-count: infinite !important;
+}
 
 @keyframes minime-cycle2 {
   0%, 49.99% { opacity: 1; }
@@ -69,12 +84,12 @@
   0% { transform: translateX(-1px); }
   50% { transform: translateX(1px); }
 }
+@keyframes minime-stroll {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(10px); }
+}
 
-/* 움직임을 줄여 달라고 한 사람에게는 첫 프레임에 멈춘다. 표정·소품은 남아 정보는 같다.
-   global.css 가 animation 을 0.001ms·1회로 줄이는데, 그러면 opacity 애니가 끝난 뒤 전부
-   투명으로 돌아가 사람이 사라진다 — 그래서 여기서 애니를 끄고 첫 장을 직접 켠다. */
+/* 움직임을 줄여 달라고 한 사람에게는 두 배 느리게. 표정·소품·프레임은 그대로다. */
 @media (prefers-reduced-motion: reduce) {
-  .minime > svg { animation: none; opacity: 0; }
-  .minime > svg:first-child { opacity: 1; }
-  .minime--run { animation: none; }
+  .minime { --slow: 2; }
 }

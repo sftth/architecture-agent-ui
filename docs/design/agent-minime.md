@@ -148,10 +148,15 @@ cicd             argocd gitlab jenkins jenkins        argocd gitlab …        d
 | 상태 | 표정 · 소품 · 손 | 프레임 | 언제 |
 |---|---|---|---|
 | `idle` | `f-idle`, 채도 55% | 정지 | 기본. 레인 대부분 |
-| `breathe` | `f-idle` | 2f 0.8s ×2회 | 대기 비트 |
-| `chat` | `f-look` + `p-bubble`(…) | 정지 1.6s | 대기 비트 — 옆 사람과 잡담 |
-| `coffee` | `f-idle` + `p-mug`(새 소품, 오른손) | 정지 2s | 대기 비트 |
-| `glance` | `f-look` | 정지 0.8s | 대기 비트 — 곁눈질 |
+| `breathe` | `f-idle` | 2f 0.9s | 빈둥 — 숨 |
+| `chat` | `f-look` + `p-bubble`(…) | 2f 1.8s | 빈둥 — 옆 사람과 잡담 |
+| `coffee` | `p-mug`(오른손), 눈 감고 한 모금 | 2f 2.4s | 빈둥 |
+| `glance` | `f-look` | 정지 0.9s | 빈둥 — 곁눈질 |
+| `stretch` | `m-hands-up` + `f-sleep`, 1px 들림 | 2f 1.2s | 빈둥 — 스트레칭 |
+| `walk` | 걷기 4f + 슬롯 안에서 10px 나갔다 돌아옴 | 4f 1.9s | 빈둥 — 어슬렁 |
+| `hop` | 2px 점프 | 2f 0.7s | 빈둥 — 깡총 |
+| `yawn` | `f-surprise` ↔ `f-sleep` | 2f 1.4s | 빈둥 — 하품 |
+| `peek` | 노트북 + `f-look` ↔ `f-focus` | 2f 1.3s | 일하는 중 — 옆을 본다 |
 | `doze` | `f-sleep` + `p-zzz` | 정지 | 마지막 run 이 끝난 지 5분 넘음. 다음 비트가 깨운다 |
 | `surprise` | `f-surprise`(새) + `m-hands-up`(새) + `p-bang`(amber !, 새) | 정지 0.6s | `activeSubAgents` 에 새로 들어온 순간 |
 | `run` | `f-idle`, `walk-1..4` + 몸 ±1px 기울기 | 4f 0.12s/f, 0.9s | surprise 직후 |
@@ -162,9 +167,19 @@ cicd             argocd gitlab jenkins jenkins        argocd gitlab …        d
 | `stopped` | `f-sleep` + `p-zzz` | 정지 | 사람이 멈춤 |
 | `ghost` | `f-idle`, 그레이스케일 40% | 정지, 비트 대상 아님 | 세션 미등록 |
 
-### 4.1 대기 비트 스케줄러
+### 4.1 사무실의 시계 (2026-09-04 개정)
 
-판(`AgentBoard`)에 `useIdleBeats(candidates)` 훅 하나. 3~6초 난수 간격으로 후보(idle 이고 ghost 아닌 사람) 중 한 명을 뽑아 비트 한 가지를 준다. 비트 종류는 사람 hash + 회차로 정해 같은 사람이 매번 커피만 마시지 않게 한다. 도는 사람이 하나라도 있으면 간격을 8~12초로 늘린다 — 일하는 사람에게 시선이 가야 한다. 탭이 숨겨지면(`visibilitychange`) 멈춘다.
+처음에는 판 전체에서 3~6초에 한 명만 움직이게 했는데, 실제로 보니 일하는 사람도 쉬는 사람도
+"가만히 서 있는" 것으로 읽혔다. 사용자의 요청으로 이렇게 바꿨다.
+
+- **일하는 사람은 멈추지 않는다.** 타이핑은 손과 함께 머리가 1px 끄덕이고(손만 움직이면 32px 에선
+  정지와 같다), 2.5~6초마다 짧게 뛰어가거나(`run`) 옆을 본다(`peek`). 그 뒤 다시 타이핑.
+- **쉬는 사람은 저마다의 시계로 빈둥거린다.** 4~12초마다 여덟 가지 중 하나를 무작위로 —
+  숨·잡담·커피·곁눈·스트레칭·어슬렁(한 걸음 나갔다 돌아옴)·깡총·하품. 동시에 셋까지만.
+- 시계는 판 하나(500ms 간격)다. 탭이 숨겨지면 멈춘다.
+- **줄이기 설정이면 두 배 느리게 간다 — 멈추지 않는다.** 이 저장소의 규칙(b1a7f61)이다.
+  `global.css` 가 모든 animation 을 0.001ms·1회로 만드므로 `Minime.css` 가 길이와 반복을
+  `!important` 로 되찾고 `--slow: 2` 로 늦춘다.
 
 ### 4.2 전이 신호 — 어디서 오나
 

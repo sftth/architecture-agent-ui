@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "../activity";
 import { RunSummary } from "../types";
-import { fnv1a } from "./look";
 import {
+  Beat,
   DOZE_AFTER_MS,
   IDLE_BEATS,
   MinimeState,
   RUN_MS,
   SUCCESS_MS,
   SURPRISE_MS,
+  WORK_BURSTS,
 } from "./states";
 
 /**
@@ -22,9 +23,12 @@ import {
  *   run running → success        → 마지막에 돌던 사람들 스파크
  *   run running → error / stopped → 마지막에 돌던 사람들에 남는다. 새 run 이 풀어 준다
  *
- * 대기 비트는 판 하나의 시계다. 3~6초마다 쉬는 사람 한 명에게 짧은 움직임 하나. 일하는
- * 사람이 있으면 8~12초로 늦춘다 — 시선은 일하는 쪽에 있어야 한다. 탭이 숨겨지거나
- * 움직임을 줄여 달라고 하면 없다. docs/design/agent-minime.md §4
+ * 그 위에 두 가지 움직임이 얹힌다.
+ *   일하는 사람 — 타이핑 사이에 몇 초마다 뛰어가거나 옆을 본다. 일하는 동안 멈춰 있지 않다.
+ *   쉬는 사람   — 저마다의 시계로 4~12초마다 빈둥거림 하나를 고른다(숨·잡담·커피·스트레칭·
+ *                어슬렁·깡총·하품). 동시에 셋까지만 — 사무실이 소란스러워지지 않게.
+ * 시계는 판 전체에 하나(500ms)다. 탭이 숨겨지면 멈추고, 움직임을 줄여 달라고 하면 두 배 느리게
+ * 간다 — 멈추지 않는다(이 저장소의 규칙, b1a7f61). docs/design/agent-minime.md §4
  */
 interface Transient {
   state: MinimeState;
@@ -49,6 +53,13 @@ export interface CrewInput {
   reducedMotion: boolean;
 }
 
+/** 동시에 빈둥거릴 수 있는 사람 수. */
+const MAX_IDLE_BEATS = 3;
+const TICK_MS = 500;
+
+const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+const pick = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+
 export function useCrew(input: CrewInput): Map<string, MinimeState> {
   const { keys, catalog, activeKeys, run, activity, planKey, registered, reducedMotion } = input;
 
@@ -65,6 +76,8 @@ export function useCrew(input: CrewInput): Map<string, MinimeState> {
   const quietSince = useRef<number>(Date.now());
   /** 비트를 받아 잠에서 깬 사람 — 이 시각까지는 다시 졸지 않는다. */
   const awakeUntil = useRef(new Map<string, number>());
+  /** 사람마다 다음 움직임이 올 시각. */
+  const nextAt = useRef(new Map<string, number>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const liveKey = activeKeys.join("\n");
@@ -94,7 +107,7 @@ export function useCrew(input: CrewInput): Map<string, MinimeState> {
   }, [rerender]);
 
   const enqueue = useCallback(
-    (key: string, states: { state: MinimeState; ms: number }[]) => {
+    (key: string, states: Beat[]) => {
       let at = Date.now();
       const queue: Transient[] = [];
       for (const s of states) {
@@ -142,17 +155,23 @@ export function useCrew(input: CrewInput): Map<string, MinimeState> {
   // ── 들어옴 · 나감 ────────────────────────────────────
   useEffect(() => {
     const prev = prevLive.current;
+    const now = Date.now();
     for (const key of live) {
       if (!prev.has(key)) {
         enqueue(key, [
           { state: "surprise", ms: SURPRISE_MS },
           { state: "run", ms: RUN_MS },
         ]);
+        // 자리에 앉아 한동안 친 뒤에 첫 번째 짧은 움직임이 온다.
+        nextAt.current.set(key, now + SURPRISE_MS + RUN_MS + between(2500, 5000));
       }
     }
     if (running) {
       for (const key of prev) {
-        if (!live.has(key)) enqueue(key, [{ state: "success", ms: SUCCESS_MS }]);
+        if (!live.has(key)) {
+          enqueue(key, [{ state: "success", ms: SUCCESS_MS }]);
+          nextAt.current.set(key, now + SUCCESS_MS + between(3000, 8000));
+        }
       }
     }
     if (live.size > 0) lastLive.current = new Set(live);
@@ -160,7 +179,7 @@ export function useCrew(input: CrewInput): Map<string, MinimeState> {
     rerender();
   }, [live, running, enqueue, rerender]);
 
-  // ── 대기 비트 ─────────────────────────────────────────
+  // ── 사무실의 시계 ─────────────────────────────────────
   const [hidden, setHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   useEffect(() => {
     const on = () => setHidden(document.hidden);
@@ -168,31 +187,57 @@ export function useCrew(input: CrewInput): Map<string, MinimeState> {
     return () => document.removeEventListener("visibilitychange", on);
   }, []);
 
-  const [round, setRound] = useState(0);
   const keysKey = keys.join("\n");
   useEffect(() => {
-    if (reducedMotion || hidden || keys.length === 0) return;
-    const busy = live.size > 0;
-    const delay = busy ? 8000 + Math.random() * 4000 : 3000 + Math.random() * 3000;
-    const id = setTimeout(() => {
+    if (hidden || keys.length === 0) return;
+    const slow = reducedMotion ? 2 : 1;
+    const id = setInterval(() => {
       const now = Date.now();
-      const rest = keys.filter((key) => {
-        if (transients.current.has(key)) return false;
-        if (live.has(key)) return false;
-        if (registered && catalog.has(key) && !registered.has(key)) return false;
-        if (sticky.current?.keys.has(key)) return false;
-        return true;
-      });
-      if (rest.length > 0) {
-        const who = rest[(fnv1a(String(round)) >>> 1) % rest.length];
-        const beat = IDLE_BEATS[(fnv1a(who) + round) % IDLE_BEATS.length];
-        awakeUntil.current.set(who, now + 30_000);
-        enqueue(who, [beat]);
+      const busyNow = (key: string) => transients.current.get(key)?.some((t) => t.until > now) ?? false;
+      let idleBeats = 0;
+      for (const key of keys) if (!live.has(key) && busyNow(key)) idleBeats++;
+
+      let changed = false;
+      for (const key of keys) {
+        const at = nextAt.current.get(key);
+        if (at === undefined) {
+          // 처음 본 사람 — 다들 한꺼번에 움직이지 않게 출발을 흩뜨린다.
+          nextAt.current.set(key, now + between(500, 6000) * slow);
+          continue;
+        }
+        if (at > now || busyNow(key)) continue;
+
+        if (live.has(key)) {
+          // 일하는 사람 — 타이핑 사이에 짧게 뛰어가거나 옆을 본다.
+          const burst = pick(WORK_BURSTS);
+          enqueue(key, [burst]);
+          nextAt.current.set(key, now + burst.ms + between(2500, 6000) * slow);
+          changed = true;
+          continue;
+        }
+
+        const ghost = Boolean(registered && catalog.has(key) && !registered.has(key));
+        const stuck = sticky.current?.keys.has(key) ?? false;
+        const waiting = running && key === planKey && activity?.kind === "agent";
+        if (ghost || stuck || waiting) {
+          nextAt.current.set(key, now + 2000);
+          continue;
+        }
+        if (idleBeats >= MAX_IDLE_BEATS) {
+          nextAt.current.set(key, now + between(500, 1500));
+          continue;
+        }
+        const beat = pick(IDLE_BEATS);
+        enqueue(key, [beat]);
+        idleBeats++;
+        awakeUntil.current.set(key, now + 30_000);
+        nextAt.current.set(key, now + beat.ms + between(4000, 12000) * slow);
+        changed = true;
       }
-      setRound((r) => r + 1);
-    }, delay);
-    return () => clearTimeout(id);
-  }, [keysKey, liveKey, reducedMotion, hidden, round]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (changed) rerender();
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, [keysKey, liveKey, hidden, reducedMotion, running, planKey, activity?.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 지금 상태 ─────────────────────────────────────────
   const now = Date.now();

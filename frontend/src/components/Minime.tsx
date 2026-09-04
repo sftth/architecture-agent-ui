@@ -1,6 +1,6 @@
 import { CSSProperties } from "react";
 import { Look } from "../minime/look";
-import { MinimeState, framesOf, layersOf } from "../minime/states";
+import { MinimeState, cycleMsOf, framesOf, layersOf } from "../minime/states";
 import "./Minime.css";
 
 export type MinimeRole = "plan" | "impl" | "eval" | "common";
@@ -34,6 +34,7 @@ export default function Minime({
   const style = {
     "--hair": look.hairColor,
     "--skin": look.skin,
+    "--cycle": `${cycleMsOf(state)}ms`,
     width: w,
     height: h,
   } as CSSProperties;
