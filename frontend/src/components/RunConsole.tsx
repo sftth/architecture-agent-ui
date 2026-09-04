@@ -19,6 +19,19 @@ const RUN_STATE: Record<string, string> = {
   running: "실행 중",
 };
 
+/** 서버가 지난 기록을 다 보냈다는 표시가 왔나. 뒤에서부터 본다 — 있다면 거의 끝에 있다. */
+function hasReplayEnd(events: LogEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.kind !== "system") continue;
+    const data = event.data;
+    if (data && typeof data === "object" && (data as Record<string, unknown>).subtype === "replay_end") {
+      return true;
+    }
+  }
+  return false;
+}
+
 function RunConsole({
   run,
   events,
@@ -71,22 +84,26 @@ function RunConsole({
   // 세션을 열면 서버가 지난 기록을 처음부터 다시 흘려보낸다. 그걸 한 덩어리씩 그리며
   // 따라 내려가면 화면이 한참 스크롤되는 것처럼 보인다 — 읽을 수 있는 것도 아니고, 끝에
   // 가서야 멎는다. 기록이 다 올 때까지는 그리되 보이지 않게 두고, 다 오면 끝에 딱 놓는다.
-  // "다 왔다"는 세션 요약의 event_count 로 안다. 그 수가 옛 요약이라 안 맞을 수 있으므로
-  // 새 이벤트가 400ms 동안 없으면 그때도 끝난 것으로 친다 — 영영 숨어 있으면 안 된다.
-  const [replayDone, setReplayDone] = useState(false);
+  // "다 왔다"는 서버가 지난 기록 끝에 붙여 보내는 replay_end 표시로 안다(runner.subscribe).
+  // 전에는 세션 요약의 event_count 를 봤는데, 백엔드를 다시 띄운 뒤 되살린 세션은 로그를
+  // 아직 안 읽어 그 수가 0 이었다 — 그래서 첫 이벤트부터 곧장 "다 왔다"가 되어 숨기지 못했다.
+  // 표시가 없는 옛 백엔드를 위해, 새 이벤트가 600ms 동안 없으면 그때도 끝난 것으로 친다.
+  //
+  // 같은 세션에 이어 말하거나 압축할 때도 소켓을 다시 열어 기록을 처음부터 다시 받는다 —
+  // run 의 id 는 그대로다. 그래서 "다 왔다"는 id 가 아니라 **지금 들고 있는 이벤트**에서
+  // 읽는다: 목록이 비워지면(다시 연결) 다시 숨기고, 표시가 들어오면 보인다.
+  const ended = useMemo(() => hasReplayEnd(events), [events]);
+  const [timedOut, setTimedOut] = useState(false);
+  const empty = events.length === 0;
   useEffect(() => {
-    setReplayDone(false);
-  }, [run?.id]);
+    if (empty) setTimedOut(false);
+  }, [empty, run?.id]);
   useEffect(() => {
-    if (replayDone || !run) return;
-    if (events.length >= run.event_count) {
-      setReplayDone(true);
-      return;
-    }
-    const id = setTimeout(() => setReplayDone(true), 400);
+    if (ended || timedOut || !run) return;
+    const id = setTimeout(() => setTimedOut(true), 600);
     return () => clearTimeout(id);
-  }, [replayDone, run, events.length]);
-  const replaying = Boolean(run) && !replayDone;
+  }, [ended, timedOut, run, events]);
+  const replaying = Boolean(run) && !ended && !timedOut;
 
   // 이벤트 수가 아니라 "그려진 뒤"를 기준으로 붙인다. 마크다운·표·도구 상자는 같은
   // 이벤트 수에서도 높이가 나중에 커져, events.length만 보면 마지막 줄을 놓친다.

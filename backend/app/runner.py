@@ -730,6 +730,16 @@ class RunManager:
         queue: asyncio.Queue = asyncio.Queue()
         for event in run.events:
             queue.put_nowait(event)
+        # 지난 기록은 여기까지 — 화면이 이 표시를 보고 처음부터 따라 내려가는 대신 끝에 딱
+        # 놓는다. 로그에는 남기지 않는다(구독마다 붙는 것이라 기록이 아니다).
+        queue.put_nowait(LogEvent(
+            seq=run._seq,
+            ts=_now(),
+            kind="system",
+            parent_tool_use_id=None,
+            data={"subtype": "replay_end", "count": len(run.events)},
+            text=None,
+        ))
         if run.status != "running":
             queue.put_nowait(None)
         else:
