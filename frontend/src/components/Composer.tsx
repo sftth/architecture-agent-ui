@@ -165,7 +165,7 @@ export default function Composer({
           대화를 끊는 결정은 다음 말을 적기 직전에 내려진다. */}
       <div className="composer-top">
         {compacted && (
-          <span className="composer-compacted" title="첫 지시문 뒤에 '앞 세션을 압축했다. report/{project} 의 최신 보고서를 먼저 읽고 이어서 진행한다'가 붙습니다">
+          <span className="composer-compacted" title="/compact 로 연 세션 — 첫 지시문에 보고서를 먼저 읽으라는 한 줄이 붙는다">
             <CompactIcon />
             압축됨 · 보고서로 이어서
           </span>
@@ -177,12 +177,8 @@ export default function Composer({
             className="composer-tool"
             onClick={onCompact}
             disabled={!canCompact}
-            title={
-              "세션 압축 (/compact)\n새 세션을 열고, 첫 지시문에 앞 세션의 보고서를 먼저 읽으라고 붙인다. " +
-              "앞 세션과 지시문 이력은 세션 목록에 그대로 남는다." +
-              (canCompact ? "" : "\n\n압축할 세션이 없거나 도는 중이다.")
-            }
-            aria-label="세션 압축"
+            title="/compact"
+            aria-label="/compact — 세션 압축"
           >
             <CompactIcon />
           </button>
@@ -192,8 +188,8 @@ export default function Composer({
             type="button"
             className="composer-tool"
             onClick={onClear}
-            title={"clear (/clear)\n빈 새 세션을 연다. 앞 세션은 세션 목록에 남는다."}
-            aria-label="clear — 새 세션"
+            title="/clear"
+            aria-label="/clear — 새 세션"
           >
             <ClearIcon />
           </button>
