@@ -6,6 +6,8 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* 기록 불러오는 중 쪽지의 기준. */
+  position: relative;
 }
 
 /* 얇은 이름표 한 줄. 배경을 따로 깔지 않아 아래 로그와 같은 면 위에 있는 것으로 읽힌다. */
@@ -91,6 +93,20 @@
 .console-icon:hover {
   background: var(--ink-800);
   color: var(--paper-100);
+}
+
+/* 지난 기록을 다시 받는 동안. 그리기는 하되 보이지 않게 — 다 오면 끝에 딱 놓인다. */
+.console-body--replaying {
+  visibility: hidden;
+}
+
+.console-loading {
+  position: absolute;
+  top: 56px;
+  left: var(--space-5);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--paper-500);
 }
 
 /* 아직 아무 것도 안 보낸 칸. 로그 대신 무엇을 하면 되는지만 적는다. */

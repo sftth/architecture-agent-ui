@@ -68,12 +68,33 @@ function RunConsole({
     return () => clearInterval(id);
   }, [running]);
 
+  // 세션을 열면 서버가 지난 기록을 처음부터 다시 흘려보낸다. 그걸 한 덩어리씩 그리며
+  // 따라 내려가면 화면이 한참 스크롤되는 것처럼 보인다 — 읽을 수 있는 것도 아니고, 끝에
+  // 가서야 멎는다. 기록이 다 올 때까지는 그리되 보이지 않게 두고, 다 오면 끝에 딱 놓는다.
+  // "다 왔다"는 세션 요약의 event_count 로 안다. 그 수가 옛 요약이라 안 맞을 수 있으므로
+  // 새 이벤트가 400ms 동안 없으면 그때도 끝난 것으로 친다 — 영영 숨어 있으면 안 된다.
+  const [replayDone, setReplayDone] = useState(false);
+  useEffect(() => {
+    setReplayDone(false);
+  }, [run?.id]);
+  useEffect(() => {
+    if (replayDone || !run) return;
+    if (events.length >= run.event_count) {
+      setReplayDone(true);
+      return;
+    }
+    const id = setTimeout(() => setReplayDone(true), 400);
+    return () => clearTimeout(id);
+  }, [replayDone, run, events.length]);
+  const replaying = Boolean(run) && !replayDone;
+
   // 이벤트 수가 아니라 "그려진 뒤"를 기준으로 붙인다. 마크다운·표·도구 상자는 같은
   // 이벤트 수에서도 높이가 나중에 커져, events.length만 보면 마지막 줄을 놓친다.
   useLayoutEffect(() => {
+    if (replaying) return;
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [blocks]);
+  }, [blocks, replaying]);
 
   // 렌더가 끝난 뒤 늦게 커지는 것(긴 표, 접힌 블록)까지 따라가려면 크기를 지켜봐야 한다.
   //
@@ -200,7 +221,12 @@ function RunConsole({
         {head}
       </header>
 
-      <div className="console-body" ref={scrollRef} onScroll={handleScroll}>
+      {replaying && <div className="console-loading">기록 불러오는 중…</div>}
+      <div
+        className={`console-body${replaying ? " console-body--replaying" : ""}`}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {/* 무엇을 시켰는지는 로그 안에 제 자리로 선다(ask 블록). 옛 run 은 그 이벤트가
             없으므로 맨 위에 한 번 세워 준다 — 기록이 사라져 보이면 안 된다. */}
         {run.prompt && !blocks.some((b) => b.kind === "ask") && (
