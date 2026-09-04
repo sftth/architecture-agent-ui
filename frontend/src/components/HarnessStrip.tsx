@@ -1,6 +1,13 @@
-import { useEffect, useState } from "react";
-import { AgentDef, StageDef } from "../types";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { AgentDef, RunSummary, StageDef } from "../types";
 import { Role, commandableAgents, planOf, roleOf } from "../harness";
+import { Activity } from "../activity";
+import { usePrefersReducedMotion } from "../motion";
+import { lookOf } from "../minime/look";
+import { givenName } from "../minime/name";
+import { MinimeState, isBusy } from "../minime/states";
+import { useCrew } from "../minime/useCrew";
+import Minime, { MinimeRole } from "./Minime";
 import "./HarnessStrip.css";
 
 /** 트리의 마디. plan 이 부모이고 나머지 셋은 그 아래로 갈라진다. */
@@ -30,12 +37,12 @@ const LOOP_NOTE: Record<string, string> = {
 const LOOP_DEFAULT = "합격할 때까지 되돌아간다";
 
 /**
- * plan 을 부모로 두고 impl · eval · 공통을 그 아래에 거는 하네스 트리.
+ * 하네스 판 — architecture-agent 라는 회사의 사무실.
  *
- * 전에는 셋을 옆으로 늘어놓고 각 칸에 소속 sub-agent 를 전부 세웠다. 그러면 cicd 처럼
- * impl 이 8개인 스테이지에서 화면 대부분이 "지금 안 도는 것"으로 채워졌고, plan 이
- * 나머지를 부린다는 관계도 나란한 배치에 묻혔다. 여기서는 관계를 선으로 그리고,
- * 마디 아래에는 **실제로 도는 것만** 건다. 전체 목록은 마디를 눌러 따로 본다.
+ * 네 레인은 부서(Plan · Impl · Eval · Comm)다. 부서마다 셔츠 색이 다르고, 직원은 이름의
+ * hash 로 정해진 얼굴로 바닥선 위에 선다. 일이 없으면 가끔 한 명씩 빈둥거리고, plan 이
+ * 부르면 놀라 달려가 노트북을 편다. 무엇이 사실인지는 전부 로그에서 온다 — 도는 사람은
+ * `activeAgents`, 결과는 run 의 상태, 회색은 세션 미등록. docs/design/agent-minime.md
  */
 export default function HarnessStrip({
   stages,
@@ -51,6 +58,8 @@ export default function HarnessStrip({
   registered,
   onRelaunch,
   relaunching,
+  run,
+  activity,
 }: {
   stages: StageDef[];
   /** 카탈로그가 실제로 도착했는가. 오기 전의 빈 목록을 "없음"이라 말하지 않기 위해. */
@@ -71,12 +80,16 @@ export default function HarnessStrip({
   onFollow: () => void;
   /**
    * 지금 보는 세션의 CLI 가 실제로 등록한 sub-agent 들. null 이면 아직 모른다(세션 없음).
-   * 카탈로그에 있어도 여기 없으면 plan 이 부를 수 없다 — 그 차이를 줄마다 점으로 보인다.
+   * 카탈로그에 있어도 여기 없으면 plan 이 부를 수 없다 — 그 차이를 회색 실루엣으로 보인다.
    */
   registered?: Set<string> | null;
   /** 세션을 다시 열어 sub-agent 를 다시 읽게 한다(같은 세션에 이어서). */
   onRelaunch?: () => void;
   relaunching?: boolean;
+  /** 지금 보는 run. 끝난 결과(성공·실패·중지)가 누구 얼굴에 남을지 정한다. */
+  run?: RunSummary;
+  /** 지금 하는 일(콘솔이 보는 것과 같은 값). plan 이 위임을 걸고 기다리는 중이면 말풍선. */
+  activity?: Activity | null;
 }) {
   const [open, setOpen] = useState<NodeId | null>(null);
 
@@ -148,20 +161,23 @@ export default function HarnessStrip({
         )}
       </header>
 
-      <AgentBoard
+      <Office
         stage={stage}
         common={common}
-        live={live}
+        activeAgents={activeAgents}
         registered={registered ?? null}
         commandable={commandable}
         selectedAgent={selectedAgent}
         onSelectAgent={onSelectAgent}
         onOpen={setOpen}
+        run={run}
+        activity={activity ?? null}
       />
 
       {open && (
         <Roster
           title={CHILDREN.find((c) => c.id === open)?.label ?? "Plan"}
+          role={open}
           note={
             open === "eval"
               ? loopNote
@@ -207,7 +223,7 @@ function FollowChip({
 }) {
   if (!liveStage) return null;
 
-  // 이미 그 스테이지를 보고 있으면 굳이 말하지 않는다 — 도는 줄에 working 이 켜져 있다.
+  // 이미 그 스테이지를 보고 있으면 굳이 말하지 않는다 — 도는 사람이 노트북을 펴고 있다.
   if (liveStage.key === shownStage) {
     return following ? <span className="harness-follow">실행 따라가는 중</span> : null;
   }
@@ -292,89 +308,198 @@ function RegDot({ registered, agentKey }: { registered: Set<string> | null; agen
   );
 }
 
-function AgentBoard({ stage, common, live, registered, commandable, selectedAgent, onSelectAgent, onOpen }: {
+/** 상태를 사람 말로 — 명패 툴팁에 덧붙인다. 색과 표정만으로 말하지 않기 위해. */
+const STATE_TEXT: Partial<Record<MinimeState, string>> = {
+  surprise: "지시 받음",
+  run: "달려가는 중",
+  typing: "일하는 중",
+  thinking: "sub-agent 에 위임하고 기다리는 중",
+  success: "끝냈다",
+  error: "실패로 끝났다",
+  stopped: "멈춤",
+  ghost: "이 세션에 등록되지 않음 — plan 이 부를 수 없다",
+  doze: "한동안 일이 없었다",
+};
+
+interface Dept {
+  id: NodeId;
+  label: string;
+  agents: AgentDef[];
+}
+
+/**
+ * 사무실 — 부서 넷과 그 안의 직원들.
+ *
+ * 전에는 레인마다 이름 줄을 세로로 세웠다. 넷을 균등 분할해 plan 레인 3/4 이 늘 비었고,
+ * "돈다/안 돈다"만 색으로 말했다. 여기서는 레인 폭을 인원에 맞추고, 사람이 무엇을 하는지를
+ * 표정과 소품으로 말한다. 넘치는 부서는 그 안에서만 가로로 밀린다.
+ */
+function Office({
+  stage,
+  common,
+  activeAgents,
+  registered,
+  commandable,
+  selectedAgent,
+  onSelectAgent,
+  onOpen,
+  run,
+  activity,
+}: {
   stage: StageDef;
   common?: StageDef;
-  live: Set<string>;
+  activeAgents: string[];
   registered: Set<string> | null;
   commandable: Set<string>;
   selectedAgent: string;
   onSelectAgent: (key: string) => void;
   onOpen: (id: NodeId) => void;
+  run?: RunSummary;
+  activity: Activity | null;
 }) {
-  // 카탈로그 어느 레인에도 없는데 지금 도는 것들. CLI 내장 agent(general-purpose 등)가
-  // 여기 온다 — 콘솔에서는 일하고 있는데 하네스가 조용하면 두 화면이 서로 다른 말을 한다.
-  const laneKeys = new Set([
-    ...stage.agents.map((a) => a.key),
-    ...(common?.agents ?? []).map((a) => a.key),
-  ]);
-  const outside: AgentDef[] = [...live]
-    .filter((k) => !laneKeys.has(k))
-    .map((k) => ({ key: k, role: "이 스테이지 밖에서 불린 agent" }) as AgentDef);
+  const reduced = usePrefersReducedMotion();
 
-  const groups: { id: NodeId; label: string; agents: AgentDef[] }[] = [
+  // 카탈로그 어느 부서에도 없는데 지금 도는 것들. CLI 내장 agent(general-purpose 등)가
+  // 여기 온다 — 콘솔에서는 일하고 있는데 사무실이 조용하면 두 화면이 서로 다른 말을 한다.
+  const catalog = useMemo(
+    () => new Set([...stage.agents, ...(common?.agents ?? [])].map((a) => a.key)),
+    [stage, common],
+  );
+  const outside: AgentDef[] = activeAgents
+    .filter((k) => !catalog.has(k))
+    .map((k) => ({ key: k, label: k, role: "이 스테이지 밖에서 불린 agent", tools: [] }));
+
+  const depts: Dept[] = [
     { id: "plan", label: "Plan/", agents: stage.agents.filter((a) => roleOf(a.key) === "plan") },
     { id: "impl", label: "Impl/", agents: stage.agents.filter((a) => roleOf(a.key) === "impl") },
     { id: "eval", label: "Eval/", agents: stage.agents.filter((a) => roleOf(a.key) === "eval") },
     { id: "common", label: "Comm/", agents: [...(common?.agents ?? []), ...outside] },
   ];
 
+  const keys = depts.flatMap((d) => d.agents.map((a) => a.key));
+  const plan = planOf(stage);
+  const states = useCrew({
+    keys,
+    catalog,
+    activeKeys: activeAgents,
+    run,
+    activity,
+    planKey: plan?.key ?? null,
+    registered,
+    reducedMotion: reduced,
+  });
+
+  // 명패의 접두어 계산 — 스테이지 것은 스테이지 카탈로그로, 공통은 공통 카탈로그로.
+  const stageKeys = stage.agents.map((a) => a.key);
+  const commonKeys = (common?.agents ?? []).map((a) => a.key);
+
+  // 부서 폭은 인원에 비례한다(1~3). Plan 은 늘 하나라 좁고, cicd 의 Impl·Eval 은 넓다.
+  const cols = depts.map((d) => `${Math.max(1, Math.min(d.agents.length, 3))}fr`).join(" ");
 
   return (
-    <div className="agent-board">
-      {groups.map((group) => (
-        <section className={`agent-lane agent-lane--${group.id}`} key={group.id}>
-          <button type="button" className="agent-lane-title" onClick={() => onOpen(group.id)}>
-            {group.label}<span>{group.agents.length}</span>
+    <div className="office" style={{ gridTemplateColumns: cols }}>
+      {depts.map((dept) => (
+        <section className={`dept dept--${dept.id}`} key={dept.id}>
+          <button type="button" className="dept-title" onClick={() => onOpen(dept.id)}>
+            {dept.label}
+            <span>{dept.agents.length}</span>
           </button>
-          <div className="agent-lane-list">
-            {group.agents.length === 0 && <span className="agent-lane-empty">—</span>}
-            {group.agents.map((agent) => {
-              const running = live.has(agent.key);
-              const selected = selectedAgent === agent.key;
-              // 도는 중이라는 말을 글자로 또 적지 않는다 — 단계 레일과 이 줄의 색이 이미 말하고 있고,
-              // 좁은 레인에서 그 글자가 세로로 깨져 오히려 읽기를 방해했다.
-              const body = (
-                <>
-                  <AgentGlyph />
-                  <span>{shortKey(agent.key)}</span>
-                  <RegDot registered={registered} agentKey={agent.key} />
-                </>
-              );
-              return commandable.has(agent.key) ? (
-                <button key={agent.key} type="button" className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`} onClick={() => onSelectAgent(agent.key)}>{body}</button>
-              ) : (
-                <span key={agent.key} className={`agent-line${running ? " agent-line--live" : ""}${selected ? " agent-line--selected" : ""}`} title={`${agent.key} — ${agent.role}`}>{body}</span>
-              );
-            })}
-          </div>
+          <Floor>
+            {dept.agents.length === 0 && <span className="floor-empty">—</span>}
+            {dept.agents.map((agent) => (
+              <Employee
+                key={agent.key}
+                agent={agent}
+                role={dept.id}
+                state={states.get(agent.key) ?? "idle"}
+                name={givenName(agent.key, dept.id === "common" ? commonKeys : stageKeys)}
+                selected={selectedAgent === agent.key}
+                pickable={commandable.has(agent.key)}
+                onPick={() => onSelectAgent(agent.key)}
+              />
+            ))}
+          </Floor>
         </section>
       ))}
     </div>
   );
 }
 
-/**
- * 줄에 세울 이름.
- *
- * 이름은 자르지 않는다 — `middleware-…` 로 만들면 어느 impl 인지 구별이 안 되고,
- * 그건 접은 것이 아니라 지운 것이다.
- *
- * 대신 **역할 꼬리**(-plan / -impl / -eval)를 뗀다. 이 줄이 어느 레인에 서 있는지가
- * 이미 그 역할을 말하므로, 꼬리는 레인마다 같은 말의 반복이다.
- * 전체 이름은 title 로 남는다.
- */
-function shortKey(key: string): string {
-  return key.replace(/-(plan|impl|eval)$/, "");
+/** 바닥선. 일하는 사람이 시야 밖이면 그쪽으로 밀어 준다 — 판 전체는 움직이지 않는다. */
+function Floor({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const busy = el.querySelector<HTMLElement>(".emp--busy");
+    if (!busy) return;
+    const left = busy.offsetLeft;
+    const right = left + busy.offsetWidth;
+    if (left < el.scrollLeft || right > el.scrollLeft + el.clientWidth) {
+      el.scrollTo({ left: Math.max(0, left - 8), behavior: "smooth" });
+    }
+  }, [children]);
+  return (
+    <div className="floor" ref={ref}>
+      {children}
+    </div>
+  );
 }
 
-function AgentGlyph() {
-  return <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.2" y="4.4" width="11.6" height="8.2" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" /><path d="M5.2 8h.01M8 8h.01M10.8 8h.01M5.5 10.4h5M8 2v2.4" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /><circle cx="8" cy="2" r=".7" fill="currentColor" /></svg>;
+function Employee({
+  agent,
+  role,
+  state,
+  name,
+  selected,
+  pickable,
+  onPick,
+}: {
+  agent: AgentDef;
+  role: MinimeRole;
+  state: MinimeState;
+  name: string[];
+  selected: boolean;
+  pickable: boolean;
+  onPick: () => void;
+}) {
+  const busy = isBusy(state);
+  const cls = [
+    "emp",
+    busy && "emp--busy",
+    selected && "emp--selected",
+    state === "error" && "emp--error",
+    state === "ghost" && "emp--ghost",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const stateText = STATE_TEXT[state];
+  const title = `${agent.key}\n${agent.role}${stateText ? `\n— ${stateText}` : ""}`;
+  const body = (
+    <>
+      <Minime look={lookOf(agent.key)} role={role} state={state} size={2} />
+      <span className="emp-name">
+        {name.map((line, i) => (
+          <i key={i}>{line}</i>
+        ))}
+      </span>
+    </>
+  );
+  return pickable ? (
+    <button type="button" className={cls} title={title} onClick={onPick}>
+      {body}
+    </button>
+  ) : (
+    <span className={cls} title={title}>
+      {body}
+    </span>
+  );
 }
 
 /** 마디를 누르면 뜨는 전체 목록. 평소 화면에는 도는 것만 두기 위한 뒷문이다. */
 function Roster({
   title,
+  role,
   note,
   agents,
   live,
@@ -385,6 +510,7 @@ function Roster({
   onClose,
 }: {
   title: string;
+  role: NodeId;
   note: string;
   agents: AgentDef[];
   live: Set<string>;
@@ -424,6 +550,17 @@ function Roster({
           {agents.map((agent) => {
             const now = live.has(agent.key);
             const pick = commandable.has(agent.key);
+            const missing = Boolean(registered && !registered.has(agent.key));
+            // 같은 얼굴이 여기에도 선다 — 판의 그 사람이 이 사람이다.
+            const face = (
+              <Minime
+                look={lookOf(agent.key)}
+                role={role}
+                state={now ? "typing" : missing ? "ghost" : "idle"}
+                size={1}
+                className="roster-face"
+              />
+            );
             return (
               <li key={agent.key}>
                 <div
@@ -437,19 +574,23 @@ function Roster({
                       className="roster-pick"
                       onClick={() => onSelectAgent(agent.key)}
                     >
-                      <span className="roster-key">{agent.key}</span>
-                      <span className="roster-role">{agent.role}</span>
+                      {face}
+                      <span className="roster-text">
+                        <span className="roster-key">{agent.key}</span>
+                        <span className="roster-role">{agent.role}</span>
+                      </span>
                     </button>
                   ) : (
                     <span className="roster-pick roster-pick--static">
-                      <span className="roster-key">{agent.key}</span>
-                      <span className="roster-role">{agent.role}</span>
+                      {face}
+                      <span className="roster-text">
+                        <span className="roster-key">{agent.key}</span>
+                        <span className="roster-role">{agent.role}</span>
+                      </span>
                     </span>
                   )}
                   {now && <span className="roster-state">실행 중</span>}
-                  {registered && !registered.has(agent.key) && (
-                    <span className="roster-state roster-state--missing">미등록</span>
-                  )}
+                  {missing && <span className="roster-state roster-state--missing">미등록</span>}
                   <RegDot registered={registered} agentKey={agent.key} />
                 </div>
               </li>

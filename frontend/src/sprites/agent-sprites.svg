@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!--
+    Agent 미니미 파츠 시트 - 16 x 24 픽셀 그리드(캐릭터 16 x 21, 위 3행은 머리 위 소품).
+    원본 킷(Downloads/architecture agent minime/sprites.svg)에 머리 4종·표정 3종·손 3종·소품 2종을 더했다.
+    색은 전부 CSS 변수다. 셔츠(--shirt --arm --zip)는 부서색, 머리(--hair)·피부(--skin)는 사람마다.
+    소품 색은 원본의 하드코딩을 우리 토큰으로 바꿨다 - 합격은 mint, 실패는 rose, 나머지는 paper.
+    docs/design/agent-minime.md §5.2
+  -->
+  <defs>
+    <!-- 머리 5종 -->
+    <g id="h-short" shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v1h-1zM12 5h1v1h-1z"/></g>
+    <g id="h-bob"   shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v4h-1zM12 5h1v4h-1z"/></g>
+    <g id="h-long"  shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v7h-1zM12 5h1v7h-1z"/></g>
+    <g id="h-spiky" shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M4 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h1v1h-1zM12 4h1v1h-1z"/></g>
+    <g id="h-buzz"  shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 1h6v1h-6zM4 2h8v2h-8zM4 4h1v1h-1zM11 4h1v1h-1z"/></g>
+
+    <!-- 얼굴·목·손 -->
+    <g id="m-head-skin" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M6 4h4v1h-4zM4 5h8v4h-8zM5 9h6v1h-6z"/><path fill="var(--blush,#F28C8C)" opacity=".7" d="M4 8h1v1h-1zM11 8h1v1h-1z"/></g>
+    <g id="m-neck-hands" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2zM3 17h1v1h-1zM12 17h1v1h-1z"/></g>
+    <g id="m-neck" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2z"/></g>
+    <g id="m-hands-type-a" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2zM4 16h1v1h-1zM11 16h1v1h-1z"/></g>
+    <g id="m-hands-type-b" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2zM4 15h1v1h-1zM11 15h1v1h-1z"/></g>
+    <g id="m-hands-up" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2zM2 11h1v1h-1zM13 11h1v1h-1z"/><path fill="var(--arm,#2E63BF)" d="M2 12h1v1h-1zM13 12h1v1h-1z"/></g>
+
+    <!-- 몸통 -->
+    <g id="m-body" shape-rendering="crispEdges">
+      <path fill="var(--shirt,#3D7BE0)" d="M4 11h8v1h-8zM3 12h10v5h-10z"/>
+      <path fill="var(--arm,#2E63BF)" d="M3 13h1v4h-1zM12 13h1v4h-1z"/>
+      <path fill="var(--zip,#6FA0F0)" d="M7 12h2v5h-2z"/>
+      <path fill="var(--collar,#E9EEF6)" d="M6 11h4v1h-4z"/>
+      <path fill="var(--accent,#7FE0D8)" d="M5 13h1v1h-1z"/>
+    </g>
+    <g id="m-legs-stand" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM4 18h3v2h-3zM9 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M3 20h4v1h-4zM9 20h4v1h-4z"/></g>
+    <g id="m-legs-a" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM3 18h3v2h-3zM9 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M2 20h4v1h-4zM9 20h4v1h-4z"/></g>
+    <g id="m-legs-b" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM4 18h3v2h-3zM10 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M3 20h4v1h-4zM10 20h4v1h-4z"/></g>
+
+    <!-- 표정 -->
+    <g id="f-idle"     shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 6h1v2h-1zM10 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v1h-2z"/></g>
+    <g id="f-look"     shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M6 6h1v2h-1zM11 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M8 8h2v1h-2z"/></g>
+    <g id="f-happy"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 7h1v1h-1zM5 6h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM10 6h1v1h-1zM11 7h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M6 8h1v1h-1zM7 9h2v1h-2zM9 8h1v1h-1z"/></g>
+    <g id="f-think"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 6h1v1h-1zM10 6h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h1v1h-1z"/></g>
+    <g id="f-error"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 5h2v1h-2zM10 5h2v1h-2zM5 6h1v2h-1zM10 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M6 9h1v1h-1zM7 8h2v1h-2zM9 9h1v1h-1z"/></g>
+    <g id="f-sleep"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 7h3v1h-3zM9 7h3v1h-3z"/><path fill="var(--mouth,#B85C50)" d="M7 8h1v1h-1z"/></g>
+    <g id="f-surprise" shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 6h2v2h-2zM10 6h2v2h-2z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v2h-2z"/></g>
+    <g id="f-focus"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 7h1v1h-1zM10 7h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v1h-2z"/></g>
+
+    <!-- 소품 -->
+    <g id="p-headset" shape-rendering="crispEdges"><path fill="var(--gear,#3B4A6B)" d="M2 2h12v1h-12zM2 3h1v3h-1zM13 3h1v3h-1zM2 6h2v3h-2zM12 6h2v3h-2zM12 9h1v1h-1zM11 10h1v1h-1z"/><path fill="var(--accent,#7FE0D8)" d="M2 7h1v1h-1zM13 7h1v1h-1zM10 10h1v1h-1z"/></g>
+    <g id="p-glasses" shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 6h1v2h-1zM6 6h4v1h-4zM6 7h1v1h-1zM9 7h1v1h-1zM11 6h1v2h-1z"/><path fill="#BFE3FF" opacity=".45" d="M5 6h1v2h-1zM10 6h1v2h-1z"/></g>
+    <g id="p-laptop"  shape-rendering="crispEdges"><path fill="var(--gear,#3B4A6B)" d="M5 13h6v3h-6z"/><path fill="var(--accent,#7FE0D8)" d="M6 13h4v2h-4z"/><path fill="#5B6B8F" d="M4 16h8v1h-8z"/></g>
+    <g id="p-mug"     shape-rendering="crispEdges"><path fill="var(--paper-100,#E9EEF6)" d="M12 15h2v2h-2z"/><path fill="var(--gear,#3B4A6B)" d="M14 15h1v1h-1z"/><path fill="var(--paper-500,#8A98B8)" opacity=".7" d="M12 13h1v1h-1zM13 12h1v1h-1z"/></g>
+    <!-- 머리 위(캔버스 0~3행) -->
+    <g id="p-bubble"  shape-rendering="crispEdges"><path fill="var(--paper-500,#C5CEDF)" d="M9 0h7v1h-7zM9 2h7v1h-7zM9 1h1v1h-1zM15 1h1v1h-1zM10 3h1v1h-1z"/><path fill="var(--ink-800,#FFFFFF)" d="M10 1h5v1h-5z"/><path fill="var(--paper-300,#8A98B8)" d="M10 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1z"/></g>
+    <g id="p-spark"   shape-rendering="crispEdges"><path fill="var(--gate-mint,#2E9E6E)" d="M13 0h1v1h-1zM12 1h3v1h-3zM13 2h1v1h-1z"/></g>
+    <g id="p-alert"   shape-rendering="crispEdges"><path fill="var(--gate-rose,#E06B5A)" d="M13 0h1v2h-1zM13 3h1v1h-1z"/></g>
+    <g id="p-bang"    shape-rendering="crispEdges"><path fill="var(--signal-amber,#F2A65A)" d="M13 0h1v2h-1zM13 3h1v1h-1z"/></g>
+    <g id="p-zzz"     shape-rendering="crispEdges"><path fill="var(--paper-500,#8A98B8)" d="M12 0h3v1h-3zM13 1h1v1h-1zM12 2h3v1h-3z"/></g>
+  </defs>
+</svg>
