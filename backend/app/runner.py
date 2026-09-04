@@ -36,6 +36,13 @@ MAX_LINE_BYTES = 8 << 20
 # 이벤트 하나가 들고 갈 원본(data)의 상한. 이걸 넘으면 요약으로 대체한다.
 MAX_EVENT_DATA_CHARS = 32 * 1024
 
+# 지목한 agent 가 세션에 등록될 때까지 다시 띄우는 최대 횟수.
+#
+# 실패한 시도는 init 에서 끊으므로 API 를 한 번도 부르지 않는다 — 토큰 0, 비용은 CLI
+# 기동 몇 초뿐이다. 그래서 넉넉하게 준다. 부하에서 실패율이 절반이라 해도 여섯 번이면
+# 남는 실패 확률은 2% 아래다.
+AGENT_REGISTER_ATTEMPTS = 6
+
 
 class RunState:
     def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
@@ -82,6 +89,11 @@ class RunState:
         self.events: List[LogEvent] = []
         self.subscribers: List[asyncio.Queue] = []
         self.process: Optional[subprocess.Popen] = None
+        # 이 턴을 몇 번째로 띄우고 있나. 1 이면 첫 시도다(재시도 사유는 아래 두 값).
+        self.attempt = 0
+        # 지목한 agent 가 이 CLI 세션에 등록됐는가. init 이벤트가 오기 전에는 모른다(None).
+        self.agent_registered: Optional[bool] = None
+        self._restart_wanted = False
         self._seq = 0
 
     def summary(self) -> RunSummary:
@@ -208,6 +220,8 @@ def _handle_stream_line(run: RunState, raw_line: str):
         return
 
     if ev_type == "system":
+        if subtype == "init":
+            _check_agent_registered(run, raw)
         run._emit("system", text=f"세션 시작 (subtype={subtype})", data=raw)
         return
 
@@ -287,6 +301,34 @@ def _handle_stream_line(run: RunState, raw_line: str):
     run._emit("raw", text=_truncate(json.dumps(raw, ensure_ascii=False)[:500]), data=raw)
 
 
+def _check_agent_registered(run: "RunState", raw: dict) -> None:
+    """지목한 agent 가 이 CLI 세션에 실제로 등록됐는지 init 이벤트로 확인한다.
+
+    `.claude/agents/**` 스캔은 CLI 기동과 경쟁한다. 머신이 한가하면 전부 등록되지만
+    (같은 저장소에서 단독 순차 10회 모두 59/59), 다른 claude 프로세스와 겹치면 최상위
+    디렉터리 한두 개까지만 훑고 끊긴다 — 59개 중 5~6개만 남은 실행을 여러 번 관측했다.
+    대화형 세션을 켜 둔 채 이 UI 를 돌리는 것이 바로 그 조건이다.
+
+    그때 메인 모델의 도구 목록에는 우리가 지목한 이름이 없다. 모델은 대신
+    general-purpose 를 부르고 실행은 **성공으로 끝난다.** 시킨 일과 다른 일을 하고도
+    화면에서 구분되지 않는 거짓 성공이라, 이쪽이 조용히 넘기면 아무도 못 잡는다.
+
+    init 은 첫 API 요청 **전에** 오므로, 여기서 걸러내면 토큰을 한 톨도 쓰지 않고 다시
+    띄울 수 있다. 그래서 판정하는 즉시 프로세스를 끊는다 — 살려 두면 그 순간부터
+    잘못된 실행에 돈이 든다.
+    """
+    names = raw.get("agents")
+    if not isinstance(names, list):
+        # 목록을 주지 않는 CLI 버전이면 판정하지 않는다. 모른다는 이유로 막지는 않는다.
+        return
+    run.agent_registered = run.agent_key in names
+    if run.agent_registered:
+        return
+    run._restart_wanted = True
+    if run.process is not None and run.process.returncode is None:
+        run.process.terminate()
+
+
 def _pump(run: "RunState", stream, loop: asyncio.AbstractEventLoop, is_stderr: bool) -> None:
     """자식 프로세스의 파이프 한 쪽을 스레드에서 끝까지 읽는다.
 
@@ -327,20 +369,16 @@ async def _execute(run: RunState):
     아무도 회수하지 않는 태스크 안에서 조용히 사라졌고, run은 영원히 "running"인 채
     이벤트가 한 건도 안 나와 화면에는 "연결 중"만 남았다. 스레드+Popen은 루프 종류를
     가리지 않으므로, 어떻게 띄운 백엔드에서도 똑같이 돈다.
+
+    한 턴이 프로세스 하나로 끝나지 않을 수 있다. 지목한 agent 가 세션에 등록되지 않은
+    채 뜨면(_check_agent_registered) init 에서 끊고 다시 띄운다. 그러니 아래는
+    "턴을 준비하는 부분"과 "그 턴을 띄우는 부분"으로 갈라져 있다 — 턴 수·대화 모드는
+    한 번만 정하고, 재시도는 띄우는 쪽만 반복한다.
     """
     # 이 턴에 무엇을 물었는지 로그에 남긴다 — 한 세션에 여러 번 물으면 콘솔이 그 자리를
     # 알아야 질문과 답을 짝지어 보여 줄 수 있다.
     run._emit("user", text=run.prompt, data={"full_prompt": run.full_prompt, "turn": run.turns + 1})
 
-    argv = [
-        CLAUDE_BIN,
-        "-p", run.full_prompt,
-        "--output-format", "stream-json",
-        "--verbose",
-        "--permission-mode", CLAUDE_PERMISSION_MODE,
-        "--forward-subagent-text",
-        "--include-hook-events",
-    ]
     # 첫 턴은 대화를 열고, 이후 턴은 그 대화를 이어받는다.
     #
     # 전에는 --no-session-persistence 를 붙여 CLI 가 대화를 디스크에 남기지 않게 했다.
@@ -352,30 +390,76 @@ async def _execute(run: RunState):
             text="이 세션은 이어 말하기가 생기기 전에 만들어져 앞 대화를 넘겨받을 수 없습니다. "
                  "새 대화로 이어갑니다 — 위쪽 기록은 화면에만 남고 에이전트는 모릅니다.",
         )
-    if run.turns == 0 or not run.resumable:
-        argv += ["--session-id", run.session_id]
-    else:
-        argv += ["--resume", run.session_id]
+    # 이 턴을 이어받기로 여는가. 재시도가 이 값을 다시 계산하면 턴 수가 부풀고 첫 턴이
+    # 여러 번 "새 대화 열기"로 세어지므로, 루프 밖에서 한 번만 정한다.
+    resume = run.turns > 0 and run.resumable
     run.turns += 1
     # 이 턴부터는 이어받을 대화가 생긴다.
     run.resumable = True
-    # 고르지 않았으면 붙이지 않는다 = CLI 기본값을 그대로 쓴다.
-    # 값은 llm_models.check_choice를 통과한 것만 들어온다(argv에 나가므로).
-    if run.model:
-        argv += ["--model", run.model]
-    if run.effort:
-        argv += ["--effort", run.effort]
 
     if run._log is None:
         run._log = store.open_log(run.id)
 
-    # 어느 Claude 계정으로 띄우나. 이 사용자가 화면에서 고른 것을 환경변수로 싣는다 —
-    # 고른 것이 없으면 기기 로그인 그대로(전에 하던 대로). 턴마다 다시 정하므로, 한도에
-    # 걸린 뒤 계정을 바꾸고 이어 보내면 이 턴부터 다른 계정이 같은 대화를 잇는다.
-    env, run.account_id, run.account_name = accounts.env_for(run.user_id)
-    store.save_meta(run.id, run.record())
-
     loop = asyncio.get_running_loop()
+
+    for attempt in range(1, AGENT_REGISTER_ATTEMPTS + 1):
+        run.attempt = attempt
+        run.agent_registered = None
+        run._restart_wanted = False
+
+        argv = [
+            CLAUDE_BIN,
+            "-p", run.full_prompt,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--permission-mode", CLAUDE_PERMISSION_MODE,
+            "--forward-subagent-text",
+            "--include-hook-events",
+        ]
+        argv += ["--resume", run.session_id] if resume else ["--session-id", run.session_id]
+        # 고르지 않았으면 붙이지 않는다 = CLI 기본값을 그대로 쓴다.
+        # 값은 llm_models.check_choice를 통과한 것만 들어온다(argv에 나가므로).
+        if run.model:
+            argv += ["--model", run.model]
+        if run.effort:
+            argv += ["--effort", run.effort]
+
+        # 어느 Claude 계정으로 띄우나. 이 사용자가 화면에서 고른 것을 환경변수로 싣는다 —
+        # 고른 것이 없으면 기기 로그인 그대로(전에 하던 대로). 턴마다 다시 정하므로, 한도에
+        # 걸린 뒤 계정을 바꾸고 이어 보내면 이 턴부터 다른 계정이 같은 대화를 잇는다.
+        env, run.account_id, run.account_name = accounts.env_for(run.user_id)
+        store.save_meta(run.id, run.record())
+
+        outcome = await _run_once(run, argv, env, loop, attempt)
+        if outcome != "retry":
+            return
+        if not resume:
+            # 끊은 시도가 이 session-id 를 이미 잡아 뒀을 수 있다. 같은 값으로 다시
+            # --session-id 를 주면 "이미 있다"로 거부당하므로 새로 딴다.
+            run.session_id = str(uuid.uuid4())
+
+    # 여섯 번을 띄웠는데도 등록되지 않았다. 여기서 성공으로 끝내면 지목한 agent 가 아닌
+    # 것이 일한 결과를 성공이라고 보고하는 셈이다. 그러지 않는다.
+    run._emit(
+        "stderr",
+        text=f"'{run.agent_key}' 가 CLI 세션에 등록되지 않아 {AGENT_REGISTER_ATTEMPTS}회 모두 "
+             "실행하지 못했습니다. 다른 claude 프로세스가 함께 돌면 agent 탐색이 끊깁니다 — "
+             "무거운 병렬 작업을 멈추고 다시 보내주세요.",
+    )
+    run._finish("error", None)
+
+
+async def _run_once(
+    run: RunState,
+    argv: List[str],
+    env: Dict[str, str],
+    loop: asyncio.AbstractEventLoop,
+    attempt: int,
+) -> str:
+    """이 턴을 프로세스 하나로 띄운다. "retry" 를 돌려주면 호출자가 다시 띄운다.
+
+    "retry" 가 아니면 run 은 이 안에서 이미 끝맺어져 있다(_finish 호출됨).
+    """
     try:
         run.process = await asyncio.to_thread(
             subprocess.Popen,
@@ -388,15 +472,17 @@ async def _execute(run: RunState):
     except FileNotFoundError:
         run._emit("stderr", text=f"'{CLAUDE_BIN}' 실행 파일을 찾을 수 없습니다. PATH를 확인하세요.")
         run._finish("error", None)
-        return
+        return "done"
     except Exception as exc:  # noqa: BLE001 - 어떤 이유로든 못 띄우면 화면에 남겨야 한다
         run._emit("stderr", text=f"claude CLI를 실행하지 못했습니다: {exc!r}")
         run._finish("error", None)
-        return
+        return "done"
 
+    tail = f" [시도 {attempt}/{AGENT_REGISTER_ATTEMPTS}]" if attempt > 1 else ""
     run._emit(
         "system",
-        text=f"claude CLI 실행: {' '.join(argv[:3])} ... (cwd={run.agent_dir}, 계정={run.account_name})",
+        text=f"claude CLI 실행: {' '.join(argv[:3])} ... "
+             f"(cwd={run.agent_dir}, 계정={run.account_name}){tail}",
     )
 
     try:
@@ -413,6 +499,16 @@ async def _execute(run: RunState):
             # 파이프를 더 못 읽으면 자식이 write에서 막혀 wait()가 끝나지 않는다. 먼저 종료시킨다.
             await _terminate(run.process)
         exit_code = await asyncio.to_thread(run.process.wait)
+        if run._restart_wanted:
+            # init 에서 걸러 끊은 프로세스다. API 는 한 번도 부르지 않았으므로 이 시도는
+            # 토큰을 쓰지 않았다. 실패로 적지 않고 조용히 다시 띄운다.
+            if attempt < AGENT_REGISTER_ATTEMPTS:
+                run._emit(
+                    "system",
+                    text=f"'{run.agent_key}' 가 이 세션에 등록되지 않아 다시 띄웁니다 "
+                         f"({attempt}/{AGENT_REGISTER_ATTEMPTS}).",
+                )
+            return "retry"
         if exit_code != 0 and any(
             "No conversation found" in (e.text or "")
             for e in run.events[-12:]
@@ -426,6 +522,7 @@ async def _execute(run: RunState):
             )
         status = "error" if failures or exit_code != 0 else "success"
         run._finish(status, exit_code)
+        return "done"
     except asyncio.CancelledError:
         # 취소된 태스크에서는 await가 곧바로 다시 취소될 수 있으므로 시그널만 보내고 끝낸다.
         if run.process.returncode is None:
@@ -436,6 +533,7 @@ async def _execute(run: RunState):
         run._emit("stderr", text=f"실행 중 예외 발생: {exc!r}")
         await _terminate(run.process)
         run._finish("error", None)
+        return "done"
 
 
 class RunManager:
