@@ -33,21 +33,39 @@
   color: var(--paper-500);
 }
 
-.io-reload {
+/* 아이콘 단추 하나의 규칙 — 머리의 새로고침과 줄의 보기·내려받기·열기가 같은 모양이다.
+   테두리 없이 면으로만 반응한다. 줄마다 알약 셋이 서면 이름보다 단추가 먼저 읽혔다. */
+.io-reload,
+.ioact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
+  padding: 0;
   background: none;
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: 999px;
-  color: var(--paper-300);
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--paper-500);
+  text-decoration: none;
   cursor: pointer;
 }
 
-.io-reload:hover:not(:disabled) {
-  border-color: var(--line-cyan);
+.io-reload {
+  align-self: center;
+  width: 28px;
+  height: 28px;
+}
+
+.io-reload:hover:not(:disabled),
+.ioact:hover {
+  background: var(--ink-800);
   color: var(--paper-100);
+}
+
+.io-reload:focus-visible,
+.ioact:focus-visible {
+  outline: 1px solid var(--line-cyan);
+  outline-offset: 1px;
 }
 
 .io-reload:disabled {
@@ -136,23 +154,114 @@
   color: var(--gate-rose);
 }
 
-/* 아직 안 만들어진 경로. 경로 자체는 보여 줘야 어디에 넣으면 되는지 알 수 있다. */
-.iot-paths {
-  margin: var(--space-2) 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+/* ── 경로 묶음 ─────────────────────────────────────────────
+   Input 표 하나 안에서 경로마다 한 묶음. 머리가 "어디의 파일들인가"를 한 번에 말하고,
+   접을 수 있다. 테두리 대신 여백과 머리의 배경으로 가른다. */
+.iogroup {
+  margin-top: var(--space-2);
 }
 
-.iot-path {
+.iogroup-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 6px 4px 2px;
+  border-radius: var(--radius-sm);
+}
+
+.iogroup-head:hover {
+  background: var(--ink-850);
+}
+
+.iogroup-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--paper-300);
+  text-align: left;
+  cursor: pointer;
+}
+
+.iogroup-caret {
+  flex: none;
+  align-self: center;
+  color: var(--paper-500);
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.iogroup--closed .iogroup-caret {
+  transform: none;
+}
+
+.iogroup-label {
+  flex: none;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper-100);
+}
+
+.iogroup-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--paper-500);
 }
 
-.iot-path em {
-  font-style: normal;
-  color: var(--line-cyan-dim);
+.iogroup-sub {
+  color: var(--line-cyan);
+}
+
+.iogroup-fresh {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--gate-mint);
+}
+
+.iogroup-count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+/* 묶음 안의 표는 머리 아래로 조금 들여 묶음에 속한 것으로 읽히게 한다. */
+.iogroup .iot-scroll {
+  padding-left: 18px;
+}
+
+.iogroup .iot-empty {
+  margin: 2px 0 0 22px;
+}
+
+.iogroup-more {
+  margin: 4px 0 0 6px;
+  padding: 2px 10px;
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.iogroup-more:hover {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
 }
 
 /* 표가 칸보다 넓어지면 페이지 전체가 아니라 이 안에서만 밀린다. */
@@ -169,8 +278,9 @@
   font-size: var(--text-xs);
 }
 
+/* 묶음마다 표가 하나라 머리줄이 반복된다. 한 단 더 죽여 묶음 머리보다 앞서지 않게 한다. */
 .iotable thead th {
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--tick-quiet);
   color: var(--paper-500);
   font-family: var(--font-label);
@@ -223,18 +333,14 @@
 .iolink--dir { color: var(--line-cyan); }
 .iolink--binary { color: var(--paper-300); }
 
+/* 이번 실행 표. 이름 옆에 붙는 작은 mint 점 — 줄 바탕의 mint 와 같은 뜻이다. */
 .iofresh {
+  display: inline-flex;
+  vertical-align: -1px;
   margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--gate-mint-dim);
   color: var(--gate-mint);
-  font-family: var(--font-label);
-  font-size: var(--text-2xs);
-  white-space: nowrap;
 }
 
-.iotable-where,
 .iotable-size,
 .iotable-time {
   color: var(--paper-500);
@@ -249,22 +355,10 @@
 }
 
 .ioact {
-  display: inline-block;
-  margin-left: 6px;
-  background: none;
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: 999px;
-  padding: 1px 8px;
-  color: var(--paper-300);
-  font-family: var(--font-label);
-  font-size: var(--text-2xs);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.ioact:hover {
-  border-color: var(--line-cyan);
-  color: var(--paper-100);
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  vertical-align: middle;
 }
 
 /* 끌 수 있는 이름 — 손이 올라오면 끌 수 있다는 것을 커서로 알린다. */

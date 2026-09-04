@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AgentDef, ModelDef, StageDef } from "../types";
 import Menu, { MenuItem } from "./Menu";
 import ModelMenu from "./ModelMenu";
@@ -11,9 +11,9 @@ import "./Composer.css";
  * 스테이지 카드마다 입력칸을 두면 지금 무엇을 보내려는지가 화면마다 흩어지므로,
  * "무엇을 적었는가 · 누구에게 · 어느 프로젝트로"를 한 자리에 모아 둔다.
  *
- * 판 하나 안에 알림 줄 · 입력칸 · 칩 줄이 차례로 들어간다(cowork-agent 입력창과 같은 구성).
- * 고르는 것은 전부 아래 칩 줄에, 지금 상태를 알리기만 하는 것은 전부 위 알림 줄에 둔다 —
- * 누를 수 있는 것과 읽기만 하는 것이 같은 줄에 섞이면 어느 쪽도 눈에 안 걸린다.
+ * 비어 있을 때는 한 줄이다 — 왼쪽에 받을 대상, 가운데 입력칸, 오른쪽에 모델과 보내기.
+ * 글이 두 줄을 넘으면 입력칸이 윗줄 전체를 차지하고 컨트롤이 아랫줄로 내려간다.
+ * 4줄짜리 빈 칸을 늘 세워 두면 로그가 그만큼 가려지는데, 지시문은 대개 한두 줄이다.
  */
 export default function Composer({
   value,
@@ -34,7 +34,6 @@ export default function Composer({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** 입력·산출물 목록에서 파일을 끌어다 놓으면 그 경로를 받는다. */
   /** 끌어다 놓은 글. 파일 경로일 수도, 운영 알람의 이상 내용일 수도 있다. */
   onDropText: (text: string) => void;
   onRun: () => void;
@@ -55,21 +54,33 @@ export default function Composer({
   // 끌어온 것이 여기 놓인다는 것을 테두리로 알린다. 놓기 전에는 알 방법이 없다.
   const [dragOver, setDragOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
 
   // 입력판은 로그 위에 떠 있으므로, 로그의 마지막 줄이 그 뒤에 영영 숨지 않으려면
-  // 로그가 이만큼을 아래에 비워 둬야 한다. 높이는 고정이 아니다 — 권한 줄이 접히거나
-  // 사용자가 입력칸을 끌어 늘리면 같이 커진다. 그래서 재보고 넘긴다.
+  // 로그가 이만큼을 아래에 비워 둬야 한다. 높이는 고정이 아니다 — 글이 길어지면
+  // 같이 커진다. 그래서 재보고 넘긴다.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     const surface = el.parentElement;
     if (!surface) return;
-    const observer = new ResizeObserver(([entry]) => {
-      surface.style.setProperty("--composer-h", `${Math.ceil(entry.contentRect.height)}px`);
+    const observer = new ResizeObserver(() => {
+      // contentRect 는 안쪽 높이라 padding·border 만큼 모자랐다 — 그만큼 로그의 마지막
+      // 줄과 오류 띠가 판 뒤에 가려졌다. 보이는 높이(border-box)를 넘긴다.
+      surface.style.setProperty("--composer-h", `${Math.ceil(el.offsetHeight)}px`);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // 글에 맞춰 입력칸 높이를 잡는다. 손잡이로 끌어 늘리는 대신 글이 곧 높이다 —
+  // 바닥은 두 줄(CSS 의 min-height), 천장은 화면의 38%. 그 사이에서 글을 따라간다.
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   // 고를 수 있는 것은 지금 보고 있는 단계의 plan뿐이다. 45개를 통째로 늘어놓으면
   // 그중 실제로 말을 걸어야 할 상대는 몇 개 안 되는데도 매번 찾아 헤매게 된다.
@@ -106,9 +117,17 @@ export default function Composer({
   const items = [...agentItems, ...commonItems];
 
   const ready = Boolean(agent) && value.trim().length > 0 && !running;
+  const modelLabel = models.find((m) => m.value === model)?.label ?? "Default";
 
   return (
-    <div className={`composer${dragOver ? " composer--drag" : ""}`} ref={box}>
+    <div
+      className={`composer${dragOver ? " composer--drag" : ""}`}
+      ref={box}
+      /* 판의 빈 자리를 눌러도 입력칸으로 초점이 간다 — 판 전체가 입력칸으로 읽힌다. */
+      onClick={(e) => {
+        if (e.target === e.currentTarget) input.current?.focus();
+      }}
+    >
       {openMenu === "agent" && (
         <Menu
           items={items}
@@ -129,21 +148,13 @@ export default function Composer({
         />
       )}
 
-      {/* 어느 프로젝트로 나가는가만 알린다.
-          전에는 대상의 도구 권한("변경 가능 · Bash, Glob, Agent")도 함께 적었는데,
-          그건 지휘자 자신에게 걸린 도구일 뿐 이 실행이 무엇을 바꾸는지가 아니었다.
-          design-plan은 Read·Glob만 들고도 design-impl을 시켜 설계 파일을 쓴다 —
-          "읽기전용"이라 적힌 대상이 파일을 남기는 것이다. 게다가 plan 9개 중 8개가
-          '변경 가능'이라, 켜져 있어도 걸러지는 것이 없었다. 틀리면서 무디기까지 한 표시다. */}
-      <div className="composer-head">
-        <span className={`composer-project${project ? "" : " composer-project--empty"}`}>
-          {project || "프로젝트 없음"}
-        </span>
-      </div>
-
+      {/* 위: 입력칸. 늘 두 줄 이상의 넉넉한 자리다 — 한 줄 알약으로 줄였을 때는 글이
+          들어갈 자리가 좁아 보여 적기 전부터 답답했다. 로그를 조금 더 가리는 대신
+          "여기에 적으라"가 분명해진다. */}
       <textarea
+        ref={input}
         className="composer-input"
-        rows={4}
+        rows={2}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -178,35 +189,40 @@ export default function Composer({
           const text = e.dataTransfer.getData("text/plain");
           if (text) onDropText(text);
         }}
+        /* 자리가 넉넉하니 보내는 법을 한 문장으로 다 적는다 — 이 안내를 읽는 유일한 자리다. */
         placeholder={
           agent
-            ? `@${agent.key} — Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기`
-            : "plan을 고르세요"
+            ? `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일을 끌어다 놓기)`
+            : "아래에서 plan 을 고르고, 무엇을 시킬지 적어 주세요"
         }
         spellCheck={false}
       />
 
+      {/* 아래: 고르는 것과 보내는 것. 왼쪽이 "누구에게 · 무엇으로", 오른쪽이 "보내기". */}
       <div className="composer-bar">
-        {/* 이름표("AGENT")도 개수도 달지 않는다 — 460px 칸에 칩이 둘이라, 그 둘이
-            차지하는 만큼 정작 읽어야 할 sub-agent 이름이 잘린다. @가 이미 대상임을
-            말하고, 개수는 메뉴를 열면 제목에 있다. 변경 가능 표시만은 남긴다. */}
+        {/* 받을 대상. @ 아이콘이 대상임을 말하므로 이름표를 달지 않는다. */}
         <Chip
           label=""
-          value={agent ? `@${agent.key}` : "대상 없음"}
+          icon={<AtIcon />}
+          value={agent ? agent.key : "대상 없음"}
           open={openMenu === "agent"}
           empty={!agent}
-          title="지시를 받을 plan"
+          title={project ? `지시를 받을 plan\n프로젝트 ${project} 로 실행된다` : "지시를 받을 plan"}
           onClick={() => setOpenMenu((m) => (m === "agent" ? null : "agent"))}
         />
         <Chip
           label=""
           icon={<SlidersIcon />}
-          value={models.find((m) => m.value === model)?.label ?? "Default"}
+          value={modelLabel}
           badge={effort || undefined}
           open={openMenu === "model"}
-          title="모델과 effort 설정"
+          title={"모델 · effort\n이번 실행에 쓸 모델과 추론 깊이"}
           onClick={() => setOpenMenu((m) => (m === "model" ? null : "model"))}
         />
+
+        {/* 어느 프로젝트로 나가는가는 왼쪽 레일의 프로젝트 칩이 이미 말한다.
+            여기서는 없을 때만 — 그때는 실행이 갈 곳이 없다는 뜻이라 — 소리 내어 알린다. */}
+        {!project && <span className="composer-noproject">프로젝트 없음</span>}
 
         <span className="composer-grow" />
 
@@ -236,6 +252,21 @@ export default function Composer({
         )}
       </div>
     </div>
+  );
+}
+
+function AtIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M10.6 8v1.2a1.6 1.6 0 0 0 3.2 0V8a5.8 5.8 0 1 0-2.3 4.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

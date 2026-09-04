@@ -1,0 +1,165 @@
+/* 환경 설정의 Claude 계정 절. 설정 화면의 결(settings-*)을 그대로 쓰고 목록만 더한다. */
+.acct-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.acct-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-800);
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+/* 지금 고른 계정 — 왼쪽 선과 테두리로 말한다. 색을 채우지 않는다. */
+.acct-row--on {
+  border-color: var(--line-cyan-dim);
+  border-left-color: var(--line-cyan);
+}
+
+.acct-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.acct-pick input {
+  flex: none;
+  accent-color: var(--line-cyan);
+}
+
+.acct-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.acct-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper-100);
+}
+
+.acct-email,
+.acct-hint {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--paper-500);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.acct-kind {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-cyan-dim);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--paper-500);
+}
+
+.acct-sub {
+  font-size: var(--text-xs);
+  color: var(--paper-500);
+}
+
+.acct-sub--ok { color: var(--gate-mint); }
+.acct-sub--bad { color: var(--signal-amber); }
+
+.acct-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+.acct-btn {
+  padding: 3px 10px;
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.acct-btn:hover:not(:disabled) {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.acct-btn--danger:hover:not(:disabled) {
+  border-color: var(--gate-rose);
+  color: var(--gate-rose);
+}
+
+.acct-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 추가 폼 — 순서가 있는 일이라 번호를 붙인다. */
+.acct-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--tick-quiet);
+}
+
+.acct-form-head {
+  font-family: var(--font-label);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper-300);
+}
+
+.acct-steps {
+  margin: 0 0 var(--space-1);
+  padding-left: 1.4em;
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--paper-300);
+}
+
+.acct-steps li { margin-bottom: 4px; }
+.acct-steps li::marker { color: var(--line-cyan); }
+
+.acct-steps code,
+.acct-form .settings-hint code {
+  font-family: var(--font-mono);
+  background: var(--ink-800);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+.acct-form-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.acct-select {
+  flex: none;
+  width: 200px;
+}

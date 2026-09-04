@@ -30,16 +30,90 @@ export function commandableAgents(stage: StageDef): AgentDef[] {
   return plan ? [plan] : stage.agents;
 }
 
-/** Agent 도구로 위임을 건 tool_use 인가 — 그렇다면 어느 sub-agent 인가. */
-function dispatchedAgent(data: unknown): string | null {
+/**
+ * 이 세션의 CLI 가 실제로 등록한 sub-agent 들.
+ *
+ * `claude -p` 는 시작할 때 `system/init` 이벤트에 `agents` 목록을 싣는다 — 그 프로세스가
+ * `.claude/agents` 에서 읽어 들인 것 전부다. 카탈로그에 있어도 여기 없으면 plan 은
+ * `Agent type 'x' not found` 를 받고, 그래서 general-purpose 를 빌려 쓰거나 스스로 대행한다.
+ * 턴마다 새 프로세스가 뜨므로 목록도 턴마다 다를 수 있다 — **마지막** init 을 본다.
+ *
+ * init 이 아직 없으면 null — "모른다"와 "하나도 없다"는 다른 말이다.
+ */
+export function registeredAgents(events: LogEvent[]): Set<string> | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.kind !== "system") continue;
+    const data = event.data;
+    if (!data || typeof data !== "object") continue;
+    const record = data as Record<string, unknown>;
+    if (record.subtype !== "init" || !Array.isArray(record.agents)) continue;
+    const names = record.agents
+      .map((a) =>
+        typeof a === "string"
+          ? a
+          : a && typeof a === "object"
+            ? (a as Record<string, unknown>).name
+            : null,
+      )
+      .filter((n): n is string => typeof n === "string");
+    return new Set(names);
+  }
+  return null;
+}
+
+/** 이 저장소의 이름 규칙 — {대상}-plan / {대상}-impl / {대상}-eval. */
+const ROLE_NAME = /\b[a-z0-9]+(?:-[a-z0-9]+)*-(?:plan|impl|eval)\b/g;
+
+/**
+ * Agent 도구로 위임을 건 tool_use 인가 — 그렇다면 어느 sub-agent 인가.
+ *
+ * `subagent_type` 만 보면 안 된다. architecture-agent 의 plan 들은 impl·eval 을
+ * `Agent({subagent_type: "general-purpose", description: "intent-impl …"})` 처럼 부른다 —
+ * CLI 내장 agent 를 빌려 쓰면서 **누구 역할인지는 description 과 prompt 에** 적는 것이다.
+ * 그래서 subagent_type 이 카탈로그에 없으면 description → prompt 순으로 카탈로그 이름을
+ * 찾고, 그것도 없으면 `-plan/-impl/-eval` 꼬리가 붙은 이름을 찾는다. 전부 실패하면
+ * subagent_type 을 그대로 돌려준다 — 내장 agent 가 도는 것도 도는 것이다.
+ *
+ * description 은 짧고 한 대상만 적혀 있어 가장 믿을 만하다. prompt 는 "당신은 intent-impl
+ * 이다 … @intent-plan 이 위임했다" 처럼 여럿이 나오므로, **가장 먼저** 나온 이름을 취한다.
+ */
+export function dispatchedAgent(data: unknown, keys: string[] = []): string | null {
   if (!data || typeof data !== "object") return null;
   const block = data as Record<string, unknown>;
   const name = block.name;
   if (name !== "Agent" && name !== "Task") return null;
   const input = block.input;
   if (!input || typeof input !== "object") return null;
-  const target = (input as Record<string, unknown>).subagent_type;
-  return typeof target === "string" ? target : null;
+  const record = input as Record<string, unknown>;
+  const target = record.subagent_type;
+  if (typeof target !== "string") return null;
+  if (keys.includes(target)) return target;
+
+  for (const field of ["description", "prompt"]) {
+    const text = record[field];
+    if (typeof text !== "string" || !text) continue;
+    const found = firstNamed(text, keys);
+    if (found) return found;
+  }
+  return target;
+}
+
+/** 글에서 가장 먼저 나오는 sub-agent 이름. 카탈로그 이름이 먼저, 없으면 이름 규칙으로. */
+function firstNamed(text: string, keys: string[]): string | null {
+  let best: { at: number; key: string } | null = null;
+  for (const key of keys) {
+    const at = text.indexOf(key);
+    if (at < 0) continue;
+    // 같은 자리에서 시작하면 긴 이름이 진짜다 — "intent" 보다 "intent-impl".
+    if (!best || at < best.at || (at === best.at && key.length > best.key.length)) {
+      best = { at, key };
+    }
+  }
+  if (best) return best.key;
+  ROLE_NAME.lastIndex = 0;
+  const match = ROLE_NAME.exec(text);
+  return match ? match[0] : null;
 }
 
 function idOf(data: unknown, field: string): string | null {
@@ -64,11 +138,22 @@ function idOf(data: unknown, field: string): string | null {
  */
 export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
   const open = new Map<string, string>(); // tool_use id -> agent key
+  // 마지막으로 턴이 끝난 자리. 그 앞의 일은 지난 턴의 일이다.
+  let lastEnd = -1;
 
-  for (const event of events) {
-    if (event.kind === "run_end") return [];
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    // run_end 는 "이 턴이 끝났다"이지 "이 세션은 끝났다"가 아니다. 같은 세션에 두 번째
+    // 지시를 보내면 첫 턴의 run_end 뒤로 새 턴의 로그가 이어진다 — 전에는 여기서 바로
+    // 빈 목록을 돌려줘, 두 번째 턴부터는 sub-agent 가 아무리 돌아도 하네스가 꺼져 있었다.
+    // 열린 위임은 그 턴과 함께 닫힌 것으로 치고, 그 뒤는 새로 센다.
+    if (event.kind === "run_end") {
+      open.clear();
+      lastEnd = i;
+      continue;
+    }
     if (event.kind === "tool_use") {
-      const target = dispatchedAgent(event.data);
+      const target = dispatchedAgent(event.data, keys);
       const id = idOf(event.data, "id");
       // 카탈로그에 있든 없든 담는다. Agent({subagent_type}) 는 **명시적인 호출**이라
       // 모호하지 않다 — 전에는 known 에 없으면 버렸는데, 그래서 CLI 내장 agent
@@ -82,8 +167,8 @@ export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
   }
   if (open.size > 0) return [...new Set(open.values())];
 
-  // 2번 갈래 — 열린 위임이 없을 때만.
-  for (let i = events.length - 1; i >= 0; i--) {
+  // 2번 갈래 — 열린 위임이 없을 때만. 지난 턴의 말은 보지 않는다.
+  for (let i = events.length - 1; i > lastEnd; i--) {
     const event = events[i];
     if (event.kind !== "tool_use" && event.kind !== "assistant") continue;
     const text = event.text ?? "";

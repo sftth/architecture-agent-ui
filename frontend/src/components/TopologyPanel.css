@@ -1549,13 +1549,19 @@
   box-shadow: inset 0 0 0 2px var(--gate-rose);
   background: rgba(225, 102, 124, 0.08);
 }
+/* 점검 결과가 없는 마디(이번 회차 범위 밖이거나 판정 NA). 전에는 고리가 tick-quiet 라
+   바탕과 거의 같은 색이어서 "테두리가 없다"로 읽혔다 — WAS 만 점검한 회차에서 WEB 이
+   그랬다. 점선 고리로 "확인 안 됨"을 형태로 말한다. 정상(mint 실선)과 갈려 보여야 한다. */
 .gnode--na .gnode-disc,
-.gnode--info .gnode-disc { box-shadow: inset 0 0 0 2px var(--tick-quiet); }
+.gnode--info .gnode-disc {
+  box-shadow: inset 0 0 0 2px transparent;
+  outline: 2px dashed var(--line-cyan-dim);
+  outline-offset: -2px;
+}
 
 .gnode:hover .gnode-disc,
 .gnode:focus-visible .gnode-disc {
   background: var(--ink-800);
-  outline: none;
 }
 
 .gnode-role {

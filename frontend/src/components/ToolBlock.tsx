@@ -85,10 +85,13 @@ function ToolBlock({ tool }: { tool: ToolCall }) {
             </div>
           )}
           {!inPart && !outPart && <p className="tool-empty">내용 없음</p>}
-          {/* 펼쳤을 때만 나온다 — 접힌 줄에 단추가 붙어 있으면 접은 의미가 없다. */}
-          <button type="button" className="tool-expand" onClick={() => setFull(true)}>
-            {truncated ? "상세 — 잘린 부분까지" : "상세"}
-          </button>
+          {/* 펼쳤을 때만 나온다 — 접힌 줄에 단추가 붙어 있으면 접은 의미가 없다.
+              제 줄을 따로 가진다: OUT 위에 떠 있게 하면 OUT 이 한 줄일 때 복사 단추와 겹쳤다. */}
+          <div className="tool-foot">
+            <button type="button" className="tool-expand" onClick={() => setFull(true)}>
+              {truncated ? "상세 — 잘린 부분까지" : "상세"}
+            </button>
+          </div>
         </div>
       )}
 

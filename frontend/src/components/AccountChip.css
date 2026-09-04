@@ -1,0 +1,89 @@
+/* 머리의 계정 칩. 사용량 띠 옆에 서서 "지금 누구로 도는가"를 늘 말한다. */
+.account {
+  position: relative;
+  flex: none;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: 999px;
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.account-chip:hover,
+.account-chip--on {
+  border-color: var(--line-cyan);
+  color: var(--paper-100);
+}
+
+.account-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.account-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gate-mint);
+}
+
+/* 한도에 걸린 계정. 이 칩이 지금 눌러야 하는 자리라는 것을 amber 로 말한다. */
+.account-chip--blocked {
+  border-color: var(--signal-amber-dim);
+  color: var(--signal-amber);
+}
+
+.account-chip--blocked:hover {
+  border-color: var(--signal-amber);
+}
+
+.account-dot--blocked {
+  background: var(--signal-amber);
+  animation: account-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes account-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.account-flag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(242, 166, 90, 0.16);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.account-caret {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* 메뉴는 칩 아래 오른쪽 끝에 맞춰 연다 — 칩이 화면 오른쪽에 있다. */
+.account .menu {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.account .menu-row-label {
+  font-family: var(--font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-dot--blocked { animation: none; }
+}

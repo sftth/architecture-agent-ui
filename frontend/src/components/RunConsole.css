@@ -130,11 +130,15 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 테이프의 들여쓰기. 도구 줄의 "Bash" 글자가 시작하는 자리(패딩 8 + 점 11 + 간격 8)보다
+     조금 더 안쪽이다. 도구의 IN/OUT 상자, 결과 보고, 에이전트의 말이 여기서 시작해
+     "도구 줄 아래에 딸린 것"으로 읽힌다 — 전에는 점과 같은 선에서 시작해 위계가 없었다. */
+  --tape-indent: 30px;
   /* 아래쪽 여백은 떠 있는 입력판이 가리는 높이다(--composer-h는 입력판이 자기 높이를
      재서 넣는다). 이만큼 비워 두어야 마지막 줄이 입력판 뒤에 영영 숨지 않고,
-     스크롤하면 글이 그 밑으로 지나간다. */
-  padding: var(--space-3) var(--space-4)
-    calc(var(--composer-h, 180px) + var(--space-4) * 2);
+     스크롤하면 글이 그 밑으로 지나간다. 좌우는 space-5 — 글이 벽에 붙으면 답답하다. */
+  padding: var(--space-3) var(--space-5)
+    calc(var(--composer-h, 128px) + var(--space-4) * 2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   /* 글이 빽빽하면 도구 줄과 에이전트의 말이 한 덩어리로 보인다. */
@@ -184,6 +188,10 @@
 .line--result .console-line-label { color: var(--gate-mint); }
 .line--stderr { color: var(--gate-rose); }
 .line--stderr .console-line-label { color: var(--gate-rose); }
+/* 경고 — 실패가 아니다. amber 로 갈라 두어야 진짜 오류가 붉을 때 눈에 걸린다. */
+.line--warn { color: var(--paper-300); }
+.line--warn .console-line-label { color: var(--signal-amber); }
+.line--warn .console-line-text { color: var(--paper-300); }
 .line--raw { opacity: 0.55; }
 
 /* 테이프 눈금 — 에이전트가 실제로 무엇을 했는지(도구·훅)만 또렷하게 남기고,
@@ -198,6 +206,7 @@
 .line--hook { border-left-color: var(--line-cyan); }
 .line--result { border-left-color: var(--gate-mint); }
 .line--stderr { border-left-color: var(--gate-rose); }
+.line--warn { border-left-color: var(--signal-amber-dim); }
 
 .line--end {
   color: var(--paper-500);
@@ -212,7 +221,7 @@
 .say {
   display: flex;
   justify-content: flex-start;
-  margin: var(--space-3) 0;
+  margin: var(--space-3) 0 var(--space-3) var(--tape-indent, 0);
 }
 
 .say-bubble {
@@ -241,6 +250,8 @@
 
 /* 사고 과정은 결과가 아니라 과정이라 한 단 죽여 둔다. */
 .say--dim .md {
+  --md-body: var(--paper-500);
+  --md-strong: var(--paper-500);
   color: var(--paper-500);
 }
 
@@ -267,13 +278,17 @@
   color: var(--paper-500);
 }
 
+/* 내 말은 채운 풍선이다. 회색 풍선은 에이전트의 것들과 한 결로 묻혀 "내가 뭘 시켰나"를
+   되짚을 때 눈에 걸리지 않았다. 색은 상호작용색(cyan) 계열에서 조금 밝힌 것 —
+   상태색(amber/mint/rose)이 아니라 경보로 읽히지 않는다. 글자색은 테마와 무관하게
+   고정한다: 밝은 테마에서도 이 면은 짙은 cyan 이라 밝은 글자가 맞다. */
 .ask-bubble {
   max-width: 85%;
   padding: var(--space-2) var(--space-3);
   border-radius: 12px 12px 3px 12px;
-  background: var(--ink-800);
-  border: 1px solid var(--line-cyan-dim);
-  color: var(--paper-100);
+  background: color-mix(in srgb, var(--line-cyan) 72%, #3f9bd4 28%);
+  border: none;
+  color: #f2f7fa;
   font-family: var(--font-body);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
@@ -285,4 +300,83 @@
 .say-bubble--asks {
   border-color: var(--signal-amber);
   background: rgba(242, 166, 90, 0.06);
+}
+
+/* ── 지금 하는 일 ─────────────────────────────────────────
+   로그 맨 끝의 살아 있는 줄. 세 점이 차례로 숨을 쉬고, 동사가 바뀌고, 마지막 신호에서
+   흐른 시간이 1초마다 는다. 도는 run 이 있을 때만 있다 — 끝나면 사라진다. */
+.activity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 6px var(--space-3);
+  border-left: 2px solid var(--signal-amber);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: rgba(242, 166, 90, 0.05);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--paper-300);
+}
+
+.activity-pulse {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  align-self: center;
+}
+
+.activity-pulse span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--signal-amber);
+  animation: activity-breathe 1.2s ease-in-out infinite;
+}
+
+.activity-pulse span:nth-child(2) { animation-delay: 0.2s; }
+.activity-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes activity-breathe {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-1px); }
+}
+
+.activity-verb {
+  flex: none;
+  font-weight: 600;
+  color: var(--paper-100);
+}
+
+/* sub-agent 가 일하는 중이면 하네스와 같은 색으로 — 두 화면이 같은 말을 한다. */
+.activity--agent { border-left-color: var(--gate-mint); background: rgba(89, 201, 165, 0.05); }
+.activity--agent .activity-pulse span { background: var(--gate-mint); }
+
+.activity-detail {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.activity-since {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 마지막 신호가 오래됐다. 색만 바꾼다 — 멈췄다고 단정하지는 않는다. */
+.activity-since--stale {
+  color: var(--signal-amber);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-pulse span { animation: none; opacity: 0.8; }
 }

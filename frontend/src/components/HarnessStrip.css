@@ -625,6 +625,90 @@ button.agent-line--live:hover {
   color: var(--signal-amber);
 }
 
+.roster-state--missing {
+  color: var(--paper-500);
+}
+
+.roster-row .agent-reg {
+  margin-right: var(--space-3);
+}
+
+/* ── 세션 등록 표시 ─────────────────────────────────────
+   카탈로그에 있는 것과 이 세션의 CLI 가 실제로 읽어 들인 것은 다르다. 줄 끝의 점이 그
+   차이다 — 찬 점(mint)은 실린 것, 빈 고리(amber)는 카탈로그에만 있어 plan 이 못 부르는 것.
+   색만으로 말하지 않는다: 모양이 다르고, 뜻은 tooltip 에 있다. */
+.agent-reg {
+  flex: none;
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.agent-reg--on {
+  background: var(--gate-mint);
+}
+
+.agent-reg--off {
+  box-shadow: inset 0 0 0 1.5px var(--signal-amber);
+}
+
+/* 머리의 요약. 다 실렸으면 조용히(중립색 글자에 mint 점), 빠진 것이 있으면 amber 로
+   소리 내고 다시 여는 단추를 옆에 세운다. */
+.harness-reg {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+.harness-reg-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.harness-reg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gate-mint);
+}
+
+.harness-reg--missing {
+  color: var(--signal-amber);
+}
+
+.harness-reg--missing .harness-reg-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--signal-amber);
+}
+
+.harness-reg-relaunch {
+  padding: 2px 9px;
+  background: none;
+  border: 1px solid var(--signal-amber-dim);
+  border-radius: 999px;
+  color: var(--signal-amber);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.harness-reg-relaunch:hover:not(:disabled) {
+  border-color: var(--signal-amber);
+  background: rgba(242, 166, 90, 0.08);
+}
+
+.harness-reg-relaunch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 @media (max-width: 1100px) {
   .tree-branches {
     grid-template-columns: 1fr;

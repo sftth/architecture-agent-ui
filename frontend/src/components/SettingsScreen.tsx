@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { changePassword, updateAgentDir } from "../api/client";
-import { UserProfile } from "../types";
+import { ClaudeAccounts, UserProfile } from "../types";
+import ClaudeAccountsSection from "./ClaudeAccountsSection";
 import "./SettingsScreen.css";
 
 interface Props {
@@ -8,9 +9,11 @@ interface Props {
   onUpdated: (user: UserProfile) => void;
   onClose: () => void;
   onLogout: () => void;
+  /** Claude 계정 목록이 바뀌면 콘솔 머리의 칩도 따라 바뀌도록. */
+  onAccountsChanged?: (accounts: ClaudeAccounts) => void;
 }
 
-export default function SettingsScreen({ user, onUpdated, onClose, onLogout }: Props) {
+export default function SettingsScreen({ user, onUpdated, onClose, onLogout, onAccountsChanged }: Props) {
   const [pathValue, setPathValue] = useState(user.architecture_agent_dir ?? "");
   const [pathBusy, setPathBusy] = useState(false);
   const [pathError, setPathError] = useState<string | null>(null);
@@ -147,6 +150,9 @@ export default function SettingsScreen({ user, onUpdated, onClose, onLogout }: P
         {pathError && <div className="settings-error">{pathError}</div>}
         {pathSaved && !pathError && <div className="settings-ok">경로를 저장했습니다.</div>}
       </section>
+
+      {/* 경로가 있어야 실행이 있고, 실행이 있어야 계정이 의미가 있다 — 그래서 경로 다음이다. */}
+      <ClaudeAccountsSection onChanged={onAccountsChanged} />
 
       <section className="settings-section">
         <h2 className="settings-section-title">비밀번호 변경</h2>

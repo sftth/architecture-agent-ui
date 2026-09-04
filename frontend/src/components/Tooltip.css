@@ -1,0 +1,63 @@
+/* 앱 전체의 툴팁. 메뉴(20)·서랍(30)·모달(40~70) 어느 위에서도 보여야 하므로 가장 위다.
+   손을 받지 않는다 — 툴팁 위로 손이 가서 대상에서 벗어나면 닫혀야 한다. */
+.tip {
+  position: fixed;
+  z-index: 90;
+  transform: translateX(-50%);
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 10px 7px;
+  background: var(--ink-850);
+  border: 1px solid var(--line-cyan-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: tip-in 0.12s ease-out;
+}
+
+@keyframes tip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-2px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.tip--above {
+  animation-name: tip-in-above;
+}
+
+@keyframes tip-in-above {
+  from { opacity: 0; transform: translateX(-50%) translateY(2px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* 한 줄짜리 — 머리말이 아니라 그냥 글. */
+.tip-text {
+  display: block;
+  color: var(--paper-100);
+}
+
+/* 머리말과 부연. 머리말이 "무엇"이고 부연이 "어떻게·왜"다. */
+.tip-head {
+  display: block;
+  color: var(--paper-100);
+  font-weight: 600;
+}
+
+.tip-line {
+  display: block;
+  margin-top: 3px;
+}
+
+/* 경로·식별자는 기계가 쓴 글이라 mono, 한 단 더 물러선 색. */
+.tip-line--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip { animation: none; }
+}

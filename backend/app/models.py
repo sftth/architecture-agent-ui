@@ -70,6 +70,46 @@ class AuthResponse(BaseModel):
     user: UserProfile
 
 
+class ClaudeAccount(BaseModel):
+    """이 UI 계정이 등록해 둔 Claude 계정 하나. 비밀값은 여기 실리지 않는다 — hint 만."""
+
+    id: str
+    name: str
+    # "oauth_token"(claude setup-token) | "api_key"(Console)
+    kind: str
+    hint: str
+    created_at: str
+    active: bool = False
+    # 마지막 연결 확인. None 이면 아직 안 해 봤다.
+    checked_at: Optional[str] = None
+    check_ok: Optional[bool] = None
+    check_note: Optional[str] = None
+    # 이 계정으로 마지막에 돌렸을 때 CLI 가 말한 제한 창 상태.
+    rate_limit_status: Optional[str] = None
+
+
+class DeviceLogin(BaseModel):
+    """기기에 `claude login` 으로 들어가 있는 계정."""
+
+    logged_in: bool
+    email: Optional[str] = None
+    org_name: Optional[str] = None
+    subscription: Optional[str] = None
+
+
+class ClaudeAccountsResponse(BaseModel):
+    # 활성 계정 id. "device" 면 기기 로그인 그대로.
+    active: str
+    device: DeviceLogin
+    accounts: list[ClaudeAccount]
+
+
+class AddClaudeAccountRequest(BaseModel):
+    name: str
+    kind: str = "oauth_token"
+    secret: str
+
+
 class RateLimit(BaseModel):
     """claude CLI 가 stream 으로 흘려 주는 제한 창 상태. 소비량·한도는 주지 않는다 —
     퍼센트를 만들 수 없는 이유이고, 그래서 창 종류와 초기화 시각만 싣는다."""
@@ -133,6 +173,8 @@ class RunSummary(BaseModel):
     turns: int = 1
     # 끝난 run 만 채워진다(result 이벤트가 와야 알 수 있다).
     usage: Optional[RunUsage] = None
+    # 마지막 턴을 돌린 Claude 계정의 이름. 한 세션 안에서 턴마다 바뀔 수 있다.
+    account_name: Optional[str] = None
 
 
 # kind: "system"(세션 시작) | "assistant"(텍스트/사고) | "tool_use" | "tool_result"

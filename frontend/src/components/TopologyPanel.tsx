@@ -229,7 +229,7 @@ export default function TopologyPanel({
                 className={`topo-age${stale ? " topo-age--stale" : ""}`}
                 title={
                   stale
-                    ? "고른 주기보다 훨씬 오래된 결과입니다. 자동 갱신은 파일을 다시 읽을 뿐이라, " +
+                    ? "고른 주기보다 훨씬 오래된 결과\n자동 갱신은 파일을 다시 읽을 뿐이라, " +
                       "점검을 다시 돌리지 않으면 이 값은 바뀌지 않습니다."
                     : undefined
                 }
@@ -361,7 +361,7 @@ function PollControl({
         className="poll-toggle"
         role="group"
         aria-label="갱신 방식"
-        title="결과 파일을 다시 읽는 주기입니다. 점검을 다시 돌리는 것은 「지금 점검」입니다."
+        title={"결과 파일을 다시 읽는 주기\n점검을 다시 돌리는 것은 「지금 점검」이다"}
       >
         <button
           type="button"
@@ -774,7 +774,9 @@ function GraphNode({
         {bad > 0 && <span className="gnode-bad">{bad}</span>}
       </span>
       <span className="gnode-name">{node.id}</span>
-      <span className="gnode-host">{node.hostname}</span>
+      {/* 점검 결과가 없으면 호스트 대신 그 사실을 적는다 — 점선 고리와 같은 말을 글로 한 번 더.
+          "정상이 아니라 안 봤다"는 것이 이 마디에 대해 지금 알 수 있는 전부다. */}
+      <span className="gnode-host">{status ? node.hostname : "이번 점검 범위 밖"}</span>
     </button>
   );
 }

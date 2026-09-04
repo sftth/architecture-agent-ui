@@ -171,9 +171,12 @@
    쓰던 지시문은 지우지 않으므로 고쳐서 다시 보낼 수 있다. */
 .send-error {
   position: absolute;
-  left: var(--space-4);
-  right: var(--space-4);
-  bottom: calc(var(--composer-h, 180px) + var(--space-2));
+  /* 입력판과 같은 좌우 — 그 바로 위에 붙는 띠라 같은 선에 서야 한다. */
+  left: var(--space-5);
+  right: var(--space-5);
+  /* 입력판은 바닥에서 space-4 떠 있고 그 위로 --composer-h 만큼이다. 그 위에 space-2 띄운다.
+     전에는 space-4 를 빼먹어 띠의 아래 절반이 입력판 뒤로 들어갔다. */
+  bottom: calc(var(--composer-h, 128px) + var(--space-4) + var(--space-2));
   z-index: 5;
   display: flex;
   align-items: baseline;
