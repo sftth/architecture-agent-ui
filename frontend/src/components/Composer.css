@@ -1,21 +1,31 @@
-/* 오른쪽 아래에 고정된 입력판. 위의 로그와 같은 폭을 쓰되, 로그가 아무리 길어져도
-   이 판은 자리를 내주지 않는다(flex: none 은 App 쪽 레이아웃에서 준다). */
 /* 로그 위에 떠 있는 입력판. 흐름을 끊고 자리를 차지하는 대신, 글이 그 밑으로 지나간다.
    바탕은 반투명 + blur라 뒤에 아직 글이 흐르고 있다는 것이 비쳐 보인다 —
-   불투명하게 덮으면 로그가 거기서 끝난 것처럼 읽힌다. */
+   불투명하게 덮으면 로그가 거기서 끝난 것처럼 읽힌다.
+
+   구조는 늘 두 줄이다.
+     위    입력칸 — 최소 두 줄 높이. 넉넉해야 "여기에 적으라"가 읽힌다.
+     아래  [ @대상 ] [ 모델 · effort ]  ………  [ ● ]
+   한 줄 알약으로 접었던 때는 글자·칩·단추가 32px 안에 눌려 빽빽했고, 적기 전부터
+   자리가 좁아 보였다. 로그를 조금 더 가리는 대신 적는 자리가 시원하다. */
 .composer {
   position: absolute;
-  left: var(--space-4);
-  right: var(--space-4);
+  /* 좌우 여백을 로그 본문의 여백(space-5)과 맞춘다. 벽에 붙어 있으면 답답하고,
+     로그의 글과 판의 글이 다른 선에서 시작하면 어긋나 보인다. */
+  left: var(--space-5);
+  right: var(--space-5);
   bottom: var(--space-4);
   z-index: 10;
-  padding: var(--space-2) var(--space-2) 6px;
-  background: color-mix(in srgb, var(--ink-900) 88%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  /* 로그 면(ink-900)보다 한 단 떠 있는 면. 테두리는 조용히, 깊이는 그림자로. */
+  background: color-mix(in srgb, var(--ink-850) 90%, transparent);
   backdrop-filter: blur(14px);
   border: 1px solid var(--line-cyan-dim);
-  /* 알림 줄·입력칸·칩 줄이 한 판 안에 든 것으로 읽히도록 모서리를 더 굴린다. */
   border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+  cursor: text;
 }
 
 /* 떠 있는 판이 바닥에 붙어 보이지 않게, 아래로 갈수록 면이 걷히는 자리를 만든다. */
@@ -38,31 +48,23 @@
   border-color: var(--line-cyan);
 }
 
-/* 알리기만 하는 줄 — 이 대상이 무엇을 할 수 있는지, 어느 프로젝트로 나가는지.
-   적기 전에 먼저 읽히게 입력칸 위에 둔다. */
-.composer-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: 4px;
-  padding: 0 var(--space-2);
-}
-
+/* 입력칸. 글에 맞춰 높이가 잡히므로(Composer.tsx) 손잡이는 없다.
+   글자는 본문 글꼴 14px — 여기 들어오는 것은 대부분 한국어 지시문이라 mono 보다 잘 읽힌다. */
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 76px;
+  min-height: calc(1.6em * 2 + 12px);
   max-height: 38vh;
-  padding: 4px var(--space-2) 6px;
+  padding: 6px var(--space-1);
   background: none;
   border: none;
   color: var(--paper-100);
-  /* 여기 들어오는 것은 대부분 한국어 지시문이다 — 그 글은 mono 보다 본문 글꼴이 잘 읽힌다.
-     끌어다 놓은 경로도 그냥 글자라 문제가 없다. */
   font-family: var(--font-body);
   font-size: var(--text-md);
   line-height: 1.6;
-  resize: vertical;
+  resize: none;
+  overflow-y: auto;
+  cursor: text;
 }
 
 .composer-input:focus {
@@ -70,40 +72,72 @@
 }
 
 .composer-input::placeholder {
-  /* 무엇을 어떻게 보내는지 알려 주는 유일한 자리다 — 흐리면 아무도 못 읽는다. */
+  /* 보내는 법을 알려 주는 유일한 자리다 — 흐리면 아무도 못 읽는다. */
   color: var(--paper-500);
   opacity: 1;
 }
 
-/* 고르는 것만 모인 줄. 보내는 단추가 다음 줄로 떨어지지 않게 한 줄로 고정한다. */
+/* 고르는 것과 보내는 것이 선 줄. 보내는 단추가 다음 줄로 떨어지지 않게 한 줄로 고정한다. */
 .composer-bar {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   flex-wrap: nowrap;
   min-width: 0;
-  padding-top: 4px;
 }
 
-/* 칩은 좁아지면 줄어들고(이름이 잘리고), 보내는 단추는 절대 밀려나지 않는다. */
+/* 이 판의 칩은 조용하다 — 테두리 없이 글자만, 손이 올라오면 면이 밝아진다.
+   글꼴은 본문(Menu.css 의 chip 은 mono). agent 이름도 여기서는 고르는 값이라
+   식별자보다 "고른 것"으로 읽혀야 하고, 옆의 모델 이름과 결이 맞아야 한다. */
 .composer-bar .chip {
   min-width: 0;
   flex: 0 1 auto;
-}
-
-/* 고르는 자리가 아니라 알리는 자리다 — 값이 없으면 눈에 걸리게 둔다. */
-.composer-project {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-}
-
-.composer-project--empty {
+  height: 30px;
+  padding: 0 10px;
+  border-color: transparent;
+  color: var(--paper-300);
   font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.composer-bar .chip:hover,
+.composer-bar .chip--on {
+  background: var(--ink-800);
+  border-color: transparent;
+  color: var(--paper-100);
+}
+
+.composer-bar .chip-icon {
+  color: var(--paper-500);
+  opacity: 1;
+}
+
+.composer-bar .chip--on .chip-icon,
+.composer-bar .chip:hover .chip-icon {
+  color: var(--paper-300);
+}
+
+.composer-bar .chip-key {
+  font-family: inherit;
+}
+
+/* 대상이 없으면 이 칩이 가장 먼저 눌러야 하는 자리다 — 테두리를 두어 비어 있음을 말한다. */
+.composer-bar .chip--empty {
+  border-color: var(--line-cyan-dim);
+}
+
+/* 모델 메뉴는 아랫줄 칩에서 위로 열린다. 왼쓱 끝에 맞추면 판 안에 든다. */
+.composer .mm {
+  left: 0;
+  right: auto;
+}
+
+/* 프로젝트가 없을 때만 나온다 — 실행이 갈 곳이 없다는 뜻이라 amber 로 소리 낸다. */
+.composer-noproject {
+  flex: none;
+  margin-left: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   color: var(--signal-amber);
 }
 
@@ -118,8 +152,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: var(--signal-amber);
   color: var(--ink-fixed);
@@ -146,7 +180,7 @@
    놓기 전에는 여기가 받는 자리인지 알 방법이 없다. */
 .composer--drag {
   border-color: var(--gate-mint);
-  box-shadow: 0 0 0 3px rgba(89, 201, 165, 0.14), 0 8px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 3px rgba(89, 201, 165, 0.14), 0 10px 30px rgba(0, 0, 0, 0.38);
 }
 
 .composer--drag .composer-input::placeholder {

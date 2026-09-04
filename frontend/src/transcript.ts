@@ -1,6 +1,7 @@
 import { LogEvent } from "./types";
 import { ToolCall } from "./components/ToolBlock";
 import { RunReport, buildReport } from "./report";
+import { detectAsk } from "./asks";
 
 /** 화면에 그릴 한 덩어리. 로그 한 줄이 아니라 "읽을 수 있는 한 조각"이다. */
 export type Block =
@@ -30,22 +31,25 @@ function isNoise(kind: string): boolean {
   return kind === "system" || kind === "run_end" || kind === "raw";
 }
 
-/**
- * 에이전트가 답을 기다리고 있는가.
- *
- * 비대화형으로 도는 하네스라 되묻고 기다릴 수 없다. 대신 agent 는 [결정 필요] 를 적고
- * 그 자리에서 끝낸다 — 사람이 답을 보내면 같은 세션의 다음 턴으로 이어진다.
- * 그 말이 긴 보고 안에 묻히면 아무도 답하지 않으므로 화면이 따로 표시한다.
- */
-const DECISION = /\[결정\s*필요\]/;
 
 const META: Record<string, { label: string; cls: string }> = {
   system: { label: "SYS", cls: "line--system" },
   hook: { label: "HOOK", cls: "line--hook" },
   stderr: { label: "ERR", cls: "line--stderr" },
+  warn: { label: "WARN", cls: "line--warn" },
   raw: { label: "RAW", cls: "line--raw" },
   run_end: { label: "END", cls: "line--end" },
 };
+
+/**
+ * stderr 가운데 경고인 것. CLI 는 실패도 경고도 전부 stderr 로 내는데, 화면이 둘을 같은
+ * rose 로 세우면 "Sandbox disabled(조직 설정이 Windows 에서 적용 안 됨)" 같은 무해한
+ * 알림이 실행 실패처럼 읽힌다. ⚠ 로 시작하는 줄, rate limit 의 여유 경고가 여기다.
+ */
+const WARNING = /^\s*⚠|^rate limit: allowed_warning/;
+
+/** 앞 줄에 딸린 줄 — 들여쓰기로 시작한다. CLI 가 경고 본문을 이렇게 이어 낸다. */
+const CONTINUATION = /^\s{2,}\S/;
 
 /** tool_use / tool_result의 data에서 짝을 맞출 id를 꺼낸다. */
 function idOf(data: unknown, field: "id" | "tool_use_id"): string | null {
@@ -114,7 +118,7 @@ function shorten(value: string): string {
   return `${line.slice(0, 61)}…`;
 }
 
-function gistOf(data: unknown, fallback: string): string {
+export function gistOf(data: unknown, fallback: string): string {
   const note = noteOf(data);
   if (note) return note;
   const input = field(data, "input");
@@ -231,13 +235,32 @@ export function toBlocks(events: LogEvent[]): Block[] {
       if (event.kind === "result" && prev && prev.kind === "md" && prev.text === text) {
         blocks.pop();
       }
-      blocks.push({ kind: "md", key, text, dim: false, asks: DECISION.test(text) });
+      // 답을 기다리는 말인지는 asks.ts 가 판정한다 — [결정 필요] 만 보면 대부분 놓친다.
+      blocks.push({ kind: "md", key, text, dim: false, asks: detectAsk(text).asks });
       continue;
     }
 
     if (event.kind === "thinking") {
       const text = (event.text ?? "").trim();
       if (text) blocks.push({ kind: "md", key, text, dim: true, asks: false });
+      continue;
+    }
+
+    if (event.kind === "stderr") {
+      const text = event.text ?? "";
+      const prev = blocks[blocks.length - 1];
+      // 들여쓴 줄은 앞 경고·오류의 본문이다. 따로 세우면 ERR 이 두 번 찍힌 것처럼 보인다.
+      if (
+        CONTINUATION.test(text) &&
+        prev &&
+        prev.kind === "meta" &&
+        (prev.cls === "line--warn" || prev.cls === "line--stderr")
+      ) {
+        blocks[blocks.length - 1] = { ...prev, text: `${prev.text}\n${text.trim()}` };
+        continue;
+      }
+      const meta = WARNING.test(text) ? META.warn : META.stderr;
+      blocks.push({ kind: "meta", key, label: meta.label, text: text.replace(/^\s*⚠\s*/, ""), cls: meta.cls });
       continue;
     }
 

@@ -48,6 +48,9 @@ export default function HarnessStrip({
   following,
   liveStage,
   onFollow,
+  registered,
+  onRelaunch,
+  relaunching,
 }: {
   stages: StageDef[];
   /** 카탈로그가 실제로 도착했는가. 오기 전의 빈 목록을 "없음"이라 말하지 않기 위해. */
@@ -66,6 +69,14 @@ export default function HarnessStrip({
   liveStage?: StageDef | null;
   /** 손으로 옮겨 둔 화면을 다시 run 쪽으로 붙인다. */
   onFollow: () => void;
+  /**
+   * 지금 보는 세션의 CLI 가 실제로 등록한 sub-agent 들. null 이면 아직 모른다(세션 없음).
+   * 카탈로그에 있어도 여기 없으면 plan 이 부를 수 없다 — 그 차이를 줄마다 점으로 보인다.
+   */
+  registered?: Set<string> | null;
+  /** 세션을 다시 열어 sub-agent 를 다시 읽게 한다(같은 세션에 이어서). */
+  onRelaunch?: () => void;
+  relaunching?: boolean;
 }) {
   const [open, setOpen] = useState<NodeId | null>(null);
 
@@ -86,6 +97,9 @@ export default function HarnessStrip({
   const live = new Set(activeAgents);
   const commandable = new Set(commandableAgents(stage).map((a) => a.key));
   const loopNote = LOOP_NOTE[stage.key] ?? LOOP_DEFAULT;
+  // 이 스테이지의 sub-agent 가운데 세션에 안 실린 것. 하나라도 있으면 plan 이 그것을
+  // 부르다 실패하고, 대신 general-purpose 를 빌리거나 스스로 대행하게 된다.
+  const missing = registered ? stage.agents.filter((a) => !registered.has(a.key)) : [];
 
   /** 마디가 품고 있는 전체 목록. Comm 만 스테이지 밖(공통)에서 온다. */
   const rosterOf = (id: NodeId): AgentDef[] =>
@@ -105,6 +119,14 @@ export default function HarnessStrip({
           shownStage={stage.key}
           onFollow={onFollow}
         />
+        {registered && (
+          <RegistryNote
+            total={stage.agents.length}
+            missing={missing}
+            onRelaunch={onRelaunch}
+            relaunching={relaunching}
+          />
+        )}
         {stages.length > 1 && (
           <div className="harness-tabs" role="tablist" aria-label="스테이지">
             {stages.map((s) => (
@@ -130,6 +152,7 @@ export default function HarnessStrip({
         stage={stage}
         common={common}
         live={live}
+        registered={registered ?? null}
         commandable={commandable}
         selectedAgent={selectedAgent}
         onSelectAgent={onSelectAgent}
@@ -150,6 +173,7 @@ export default function HarnessStrip({
           }
           agents={rosterOf(open)}
           live={live}
+          registered={registered ?? null}
           commandable={commandable}
           selectedAgent={selectedAgent}
           onSelectAgent={(key) => {
@@ -196,10 +220,83 @@ function FollowChip({
   );
 }
 
-function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectAgent, onOpen }: {
+/**
+ * 세션에 sub-agent 가 몇 개 실렸는지, 안 실린 것이 있으면 다시 여는 길.
+ *
+ * CLI 는 세션을 열 때마다 `.claude/agents` 를 다시 읽는데, 이 저장소처럼 폴더가 깊고
+ * 파일이 60개쯤 되면 앞 폴더 몇 개만 읽고 멈추는 세션이 섞여 나온다(로그의 init 이벤트로
+ * 확인). 그 세션에서 plan 은 impl·eval 을 부르지 못한다. 턴마다 새 프로세스가 뜨므로
+ * 세션을 다시 열면 다시 읽는다 — 대화는 --resume 으로 이어진다.
+ */
+function RegistryNote({
+  total,
+  missing,
+  onRelaunch,
+  relaunching,
+}: {
+  total: number;
+  missing: AgentDef[];
+  onRelaunch?: () => void;
+  relaunching?: boolean;
+}) {
+  if (missing.length === 0) {
+    return (
+      <span
+        className="harness-reg harness-reg--ok"
+        title={`이 세션에 이 스테이지의 sub-agent ${total}개가 모두 등록됨`}
+      >
+        <span className="harness-reg-dot" aria-hidden="true" />
+        세션에 {total}개 등록
+      </span>
+    );
+  }
+  const names = missing.map((a) => a.key).join("\n");
+  return (
+    <span className="harness-reg harness-reg--missing">
+      <span
+        className="harness-reg-text"
+        title={`이 세션의 CLI 가 읽지 못한 sub-agent ${missing.length}개\n${names}`}
+      >
+        <span className="harness-reg-dot" aria-hidden="true" />
+        미등록 {missing.length}/{total}
+      </span>
+      {onRelaunch && (
+        <button
+          type="button"
+          className="harness-reg-relaunch"
+          onClick={onRelaunch}
+          disabled={relaunching}
+          title={
+            "세션 다시 열기\n같은 세션에 이어서 새 프로세스를 띄워 sub-agent 를 다시 읽게 한다. " +
+            "도는 중이면 먼저 멈춘다."
+          }
+        >
+          {relaunching ? "다시 여는 중…" : "다시 열기"}
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** 줄 끝의 등록 점. 찬 점은 세션에 실린 것, 빈 고리는 카탈로그에만 있는 것. */
+function RegDot({ registered, agentKey }: { registered: Set<string> | null; agentKey: string }) {
+  if (!registered) return null;
+  const on = registered.has(agentKey);
+  return (
+    <i
+      className={`agent-reg${on ? " agent-reg--on" : " agent-reg--off"}`}
+      title={on ? "이 세션에 등록됨" : "이 세션에 등록되지 않음 — plan 이 부를 수 없다"}
+      aria-label={on ? "등록됨" : "미등록"}
+      role="img"
+    />
+  );
+}
+
+function AgentBoard({ stage, common, live, registered, commandable, selectedAgent, onSelectAgent, onOpen }: {
   stage: StageDef;
   common?: StageDef;
   live: Set<string>;
+  registered: Set<string> | null;
   commandable: Set<string>;
   selectedAgent: string;
   onSelectAgent: (key: string) => void;
@@ -241,6 +338,7 @@ function AgentBoard({ stage, common, live, commandable, selectedAgent, onSelectA
                 <>
                   <AgentGlyph />
                   <span>{shortKey(agent.key)}</span>
+                  <RegDot registered={registered} agentKey={agent.key} />
                 </>
               );
               return commandable.has(agent.key) ? (
@@ -280,6 +378,7 @@ function Roster({
   note,
   agents,
   live,
+  registered,
   commandable,
   selectedAgent,
   onSelectAgent,
@@ -289,6 +388,7 @@ function Roster({
   note: string;
   agents: AgentDef[];
   live: Set<string>;
+  registered: Set<string> | null;
   commandable: Set<string>;
   selectedAgent: string;
   onSelectAgent: (key: string) => void;
@@ -347,6 +447,10 @@ function Roster({
                     </span>
                   )}
                   {now && <span className="roster-state">실행 중</span>}
+                  {registered && !registered.has(agent.key) && (
+                    <span className="roster-state roster-state--missing">미등록</span>
+                  )}
+                  <RegDot registered={registered} agentKey={agent.key} />
                 </div>
               </li>
             );

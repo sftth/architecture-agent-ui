@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import store
+from . import accounts, store
 from .agents_catalog import find_agent
 from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
 from .models import LogEvent, RateLimit, RunSummary, RunUsage
@@ -60,6 +60,10 @@ class RunState:
         self._log = None
         # result 이벤트가 와야 채워진다.
         self.usage: Optional[RunUsage] = None
+        # 이 턴을 어느 Claude 계정으로 돌렸나. 턴마다 다시 정해진다 — 한도에 걸려 바꿔 타면
+        # 같은 세션의 다음 턴은 다른 계정이다.
+        self.account_id = accounts.DEVICE
+        self.account_name: Optional[str] = None
         self.user_id = user_id
         self.agent_dir = agent_dir
         self.stage_key = stage_key
@@ -100,6 +104,7 @@ class RunState:
             event_count=len(self.events),
             usage=self.usage,
             turns=self.turns,
+            account_name=self.account_name,
         )
 
     def record(self) -> dict:
@@ -209,20 +214,30 @@ def _handle_stream_line(run: RunState, raw_line: str):
     if ev_type == "rate_limit_event":
         info = raw.get("rate_limit_info") or {}
         status = info.get("status", "unknown")
-        # 제한 창은 계정 전체에 걸리는 값이라 run 이 아니라 매니저가 들고 있는다.
-        run_manager.rate_limit = RateLimit(
+        # 제한 창은 run 이 아니라 **계정**에 걸리는 값이다. 계정을 바꿔 탈 수 있게 된 뒤로는
+        # 계정마다 따로 들고 있어야 한다 — Max 가 막혔다는 표시가 Enterprise 로 바꾼 뒤에도
+        # 남아 있으면 안 되고, 반대로 Enterprise 가 막힌 것을 Max 의 것으로 읽어도 안 된다.
+        limit = RateLimit(
             status=str(status),
             kind=info.get("rateLimitType"),
             resets_at=info.get("resetsAt"),
             using_overage=bool(info.get("isUsingOverage")),
         )
+        run_manager.rate_limits[(run.user_id, run.account_id)] = limit
+        accounts.note_rate_limit(run.user_id, run.account_id, str(status))
         # allowed 는 "아무 일 없음"이라 화면에서 걸러지는 잡음이지만, 그 밖의 상태는
         # 실행이 여기서 멈춘 이유일 수 있다. 걸릴 자리에 두려면 종류부터 달라야 한다 —
         # 화면이 문구를 뒤져 판정하게 만들지 않는다.
         if status == "allowed":
             run._emit("system", text=f"rate limit 상태: {status}", data=raw)
         else:
-            run._emit("stderr", text=f"rate limit: {status} — 실행이 지연되거나 막힐 수 있습니다", data=raw)
+            who = run.account_name or "기기 로그인"
+            run._emit(
+                "stderr",
+                text=f"rate limit: {status} — {who} 계정이 한도에 걸렸습니다. "
+                     "위쪽 계정 칩에서 다른 계정으로 바꾸고 이어서 보내면 같은 세션으로 계속됩니다.",
+                data=raw,
+            )
         return
 
     if ev_type in ("assistant", "user"):
@@ -354,12 +369,19 @@ async def _execute(run: RunState):
     if run._log is None:
         run._log = store.open_log(run.id)
 
+    # 어느 Claude 계정으로 띄우나. 이 사용자가 화면에서 고른 것을 환경변수로 싣는다 —
+    # 고른 것이 없으면 기기 로그인 그대로(전에 하던 대로). 턴마다 다시 정하므로, 한도에
+    # 걸린 뒤 계정을 바꾸고 이어 보내면 이 턴부터 다른 계정이 같은 대화를 잇는다.
+    env, run.account_id, run.account_name = accounts.env_for(run.user_id)
+    store.save_meta(run.id, run.record())
+
     loop = asyncio.get_running_loop()
     try:
         run.process = await asyncio.to_thread(
             subprocess.Popen,
             argv,
             cwd=run.agent_dir,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -372,7 +394,10 @@ async def _execute(run: RunState):
         run._finish("error", None)
         return
 
-    run._emit("system", text=f"claude CLI 실행: {' '.join(argv[:3])} ... (cwd={run.agent_dir})")
+    run._emit(
+        "system",
+        text=f"claude CLI 실행: {' '.join(argv[:3])} ... (cwd={run.agent_dir}, 계정={run.account_name})",
+    )
 
     try:
         # return_exceptions=True: 한쪽 pump가 죽어도 다른 쪽 로그를 끝까지 받아 UI에 남긴다.
@@ -417,9 +442,14 @@ class RunManager:
     def __init__(self):
         self.runs: Dict[str, RunState] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
-        # 마지막으로 확인된 제한 창 상태. run 이 돌 때마다 갱신된다.
-        self.rate_limit: Optional[RateLimit] = None
+        # 마지막으로 확인된 제한 창 상태 — (사용자, 계정) 마다 하나. run 이 돌 때마다 갱신된다.
+        self.rate_limits: Dict[tuple, RateLimit] = {}
         self._restore()
+
+    def rate_limit_for(self, user_id: str) -> Optional[RateLimit]:
+        """이 사용자가 지금 고른 계정의 제한 창 상태. 바꿔 타면 그 계정의 것이 보인다."""
+        _env, account_id, _name = accounts.env_for(user_id)
+        return self.rate_limits.get((user_id, account_id))
 
     def _restore(self) -> None:
         """디스크에 남은 기록을 목록으로 되살린다. 로그는 실제로 열어 볼 때 읽는다."""
@@ -449,6 +479,7 @@ class RunManager:
             run.exit_code = meta.get("exit_code")
             usage = meta.get("usage")
             run.usage = RunUsage(**usage) if usage else None
+            run.account_name = meta.get("account_name")
             # 프로세스는 백엔드와 함께 죽었다. "running" 으로 되살리면 영원히 도는
             # 것처럼 보이고 중지도 안 되므로, 끊긴 것으로 표시한다.
             run.status = "stopped" if meta.get("status") == "running" else meta.get("status", "stopped")

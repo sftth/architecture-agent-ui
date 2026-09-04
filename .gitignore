@@ -32,6 +32,10 @@ backend/runs/*
 backend/data/*
 !backend/data/.gitkeep
 
+# Scouter webapp 배포본(20MB 바이너리) — 저장소에 넣지 않는다. README 의 APM 절대로 각자 놓는다.
+# conf/scouter.conf 에는 Collector 비밀번호가 풀어 써지고, logs/ 는 로컬 로그다.
+backend/vendor/
+
 # Editor
 .vscode/
 .idea/

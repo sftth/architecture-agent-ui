@@ -50,9 +50,63 @@ uv run uvicorn app.main:app --reload --port 9000 --timeout-graceful-shutdown 5
 | `SESSION_STORE_PATH` | `backend/data/sessions.json` | 로그인 토큰(해시)을 저장할 파일 위치. 백엔드를 재시작해도 로그인이 유지됩니다 |
 | `SESSION_TTL_DAYS` | `30` | 로그인 유효 기간(일) |
 | `PBKDF2_ITERATIONS` | `240000` | 비밀번호 해싱 반복 횟수 |
+| `CLAUDE_ACCOUNTS_PATH` | `backend/data/claude_accounts.json` | 계정별로 등록한 Claude 계정(구독 토큰 · API 키)을 저장할 파일 위치 |
+| `SCOUTER_WEBAPP_DIR` | `backend/vendor/scouter-webapp` | Scouter 배포본의 `webapp/` 디렉터리(jar · lib · conf). 아래 "APM" 절 참조 |
+| `SCOUTER_JAVA` | `JAVA_HOME/bin/java` → PATH 의 `java` | webapp 을 띄울 java(JDK 8 이상) |
+| `SCOUTER_WEBAPP_PORT` | `6188` | webapp 의 REST 포트 — 127.0.0.1 전용, 밖으로 열리지 않음 |
+| `SCOUTER_IDLE_STOP_SEC` | `600` | 아무도 읽지 않으면 이 시간 뒤 webapp 을 내림(초) |
+| `SCOUTER_ACCOUNTS_PATH` | `backend/data/scouter_accounts.json` | Collector 로그인 계정(사용자·프로젝트별)을 저장할 파일. 원문이라 `0600` |
 
 > 계정 파일에는 비밀번호 해시(PBKDF2-SHA256 + salt)와 세션 토큰 해시가 들어 있어 `0600`으로
 > 저장됩니다. `backend/data/`는 `.gitignore` 대상이라 커밋되지 않습니다.
+>
+> `claude_accounts.json` 에는 `claude setup-token` 으로 만든 **토큰 원문**이 들어 있습니다
+> (환경변수로 CLI 에 넘겨야 하므로 해시로는 쓸 수 없습니다). 이 파일이 기계 밖으로 나가면
+> 그 계정으로 CLI 를 쓸 수 있으니, 여러 사람이 쓰는 서버에서는 접근 권한을 확인하세요.
+
+### Claude 계정 바꿔 타기
+
+`claude login` 은 기기에 하나뿐입니다. Enterprise 와 Max 처럼 계정이 둘이고 한 쪽이 5시간·7일
+한도에 걸리면, 전에는 터미널에서 로그아웃·로그인을 다시 해야 했습니다. 이제 화면에서 고릅니다.
+
+1. 터미널에서 `claude setup-token` 을 실행하고, 브라우저에서 **등록할 계정**으로 로그인합니다.
+   `sk-ant-oat…` 로 시작하는 1년짜리 토큰이 찍힙니다(Pro · Max · Team · Enterprise 모두 가능).
+2. 화면의 **환경 설정 → Claude 계정** 에서 이름과 함께 붙여 넣습니다. 계정마다 한 번입니다.
+3. 머리의 **계정 칩**(사용량 띠 옆)에서 고릅니다. 다음 턴부터 그 계정으로 CLI 가 뜨고,
+   같은 세션(`--resume`)이 그대로 이어집니다. 한도에 걸리면 칩이 amber 로 바뀝니다.
+
+백엔드는 고른 계정의 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`(API 키면 `ANTHROPIC_API_KEY`)으로 실어
+CLI 를 띄우고, 나머지 인증 환경변수는 걷어 냅니다 — 둘이 함께 있으면 API 키가 이기기 때문입니다.
+"기기 로그인"을 고르면 전처럼 환경을 건드리지 않습니다.
+
+### APM (Scouter) — 운영 화면의 실시간 수치
+
+운영 단계의 토폴로지는 agent 가 「지금 점검」으로 한 번 돌아 남긴 **로그 판정**입니다. 그 아래
+APM 판의 TPS · 응답시간 · Heap · CPU 는 agent 가 아니라 **백엔드가 직접** 읽습니다 — 30초마다
+보는 값을 agent 로 읽으면 화면을 켜 둔 만큼 토큰이 흘러나가기 때문입니다.
+
+방식은 Desktop Client 와 같습니다. Scouter 배포본의 `webapp`(Collector 에 6100 프로토콜로
+로그인해 값을 받아 REST 로 내주는 공식 클라이언트)을 백엔드가 **자식 프로세스로 옆에 띄우고**
+`127.0.0.1:6188` 로만 읽습니다. 서버에는 아무것도 새로 놓지 않고, 보안그룹도 그대로입니다
+(백엔드 호스트 → Collector 6100 이 Desktop Client 용으로 이미 열려 있으면 됩니다).
+
+준비:
+
+1. Scouter 배포본(`scouter-all-{버전}.tar.gz`)의 `webapp/` 디렉터리를 `backend/vendor/scouter-webapp`
+   에 둡니다. 이미 설치한 Collector 호스트에서 복사해 오면 버전이 맞습니다:
+   `scp -r -i {pem} {user}@{collector}:/engn001/scouter/{버전}/webapp backend/vendor/scouter-webapp`
+2. 백엔드 호스트에 JDK 8 이상이 있어야 합니다(`JAVA_HOME` 또는 `SCOUTER_JAVA`).
+3. 운영 화면의 APM 판에서 Collector 로그인 계정(Desktop Client 에 넣는 id · 비밀번호)을 넣습니다.
+   백엔드가 `backend/data/scouter_accounts.json`(0600)에 보관하고 webapp 설정에만 풀어 씁니다.
+
+Collector 주소·포트는 `output/{project}/confirmed/infra_confirmed.json` 의
+`monitoring_targets.scouter`(planner 가 적은 확정값)에서 읽습니다. 「지금 읽기」나 자동 모드가
+처음 읽을 때 webapp 을 띄우고(십여 초), 한동안 읽지 않으면 스스로 내립니다. 백엔드가 내려가면
+함께 내려갑니다.
+
+> Scouter 2.20.0 배포본의 `webapp/lib` 에는 `jackson-databind-2.12.6.1` 과 `jackson-core-2.8.11`
+> 이 섞여 있어 그대로는 기동 중 `NoClassDefFoundError: JacksonFeature` 로 죽습니다.
+> `jackson-core-2.12.6.jar` 을 `lib/` 에 두고 `jackson-core-2.8.11.jar` 을 빼야 합니다.
 >
 > 인증 토큰은 `Authorization: Bearer` 헤더로 평문 전송되므로, 사내망 밖에 노출하는 경우
 > nginx 등 앞단에서 HTTPS를 적용하세요.

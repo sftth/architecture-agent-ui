@@ -1,47 +1,79 @@
 /* 에이전트가 쓴 글. 로그가 아니라 문서로 읽히도록 본문 서체와 여백을 준다. */
 .md {
+  /* 본문과 제목·강조의 두 단. 사고 과정처럼 통째로 죽여야 하는 자리는 이 둘만 바꾼다. */
+  --md-body: var(--paper-300);
+  --md-strong: var(--paper-100);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
-  color: var(--paper-100);
+  color: var(--md-body);
 }
 
 .md > *:first-child { margin-top: 0; }
 .md > *:last-child { margin-bottom: 0; }
 
+/* 본문은 제목보다 한 단 물러선 색이다. 제목·강조가 paper-100 으로 서고 나머지가
+   paper-300 으로 눕는다 — 같은 색·같은 굵기면 "필수 작업 규칙" 같은 제목이 그 아래
+   여덟 항목과 한 덩어리로 읽힌다. 문단 사이는 12px, 제목 앞은 20px 로 벌려
+   어디서 한 절이 끝나고 다음 절이 시작하는지가 여백만으로 보이게 한다. */
 .md p {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   white-space: pre-wrap;
 }
 
 .md h3,
 .md h4,
 .md h5 {
-  margin: var(--space-3) 0 var(--space-2);
+  margin: 20px 0 var(--space-2);
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: 700;
   line-height: var(--leading-tight);
+  color: var(--md-strong);
 }
 
 .md h3 { font-size: var(--text-lg); }
 .md h4 { font-size: var(--text-md); }
-.md h5 { font-size: var(--text-sm); color: var(--paper-300); }
+/* ### 는 본문과 같은 크기라 굵기·색만으로는 약하다. 왼쪽에 짧은 선을 세워 절의 시작임을
+   형태로 말한다 — 색은 상태색이 아니라 상호작용색(cyan)이라 경보로 읽히지 않는다. */
+.md h5 {
+  padding-left: 10px;
+  border-left: 2px solid var(--line-cyan);
+  font-size: var(--text-md);
+}
+
+/* 제목 바로 뒤에 오는 첫 덩어리는 제목에 붙는다 — 그래야 "제목 + 내용"이 한 절로 묶인다. */
+.md h3 + *,
+.md h4 + *,
+.md h5 + * {
+  margin-top: 0;
+}
 
 .md ul,
 .md ol {
-  margin: 0 0 var(--space-2);
-  padding-left: 1.3em;
+  margin: 0 0 var(--space-3);
+  padding-left: 1.6em;
 }
 
+/* 항목 사이 6px. 번호 목록의 항목이 두세 줄씩 되면 3px 로는 어디서 다음 항목이
+   시작하는지 번호를 찾아야 알 수 있었다. */
 .md li {
-  margin-bottom: 3px;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+
+.md li:last-child {
+  margin-bottom: 0;
 }
 
 .md li::marker {
   color: var(--line-cyan);
 }
 
-.md strong { font-weight: 600; }
+/* 강조는 본문 위로 떠야 한다 — 본문이 한 단 물러선 만큼 강조는 제목 색으로 선다. */
+.md strong {
+  font-weight: 600;
+  color: var(--md-strong);
+}
 
 /* 문장 속 짧은 식별자. 기계가 쓴 문자열이므로 mono. */
 .md code {
@@ -54,7 +86,7 @@
 }
 
 .md-code {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
   overflow-x: auto;
   background: var(--surface-recess);
@@ -71,7 +103,7 @@
 }
 
 .md blockquote {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   padding-left: var(--space-3);
   border-left: 2px solid var(--line-cyan-dim);
   color: var(--paper-300);
@@ -85,7 +117,7 @@
 
 /* 표가 칸보다 넓어지면 페이지가 아니라 이 안에서만 밀린다. */
 .md-table {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   overflow-x: auto;
 }
 

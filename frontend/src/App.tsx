@@ -3,6 +3,7 @@ import PhaseRail from "./components/PhaseRail";
 import HarnessStrip from "./components/HarnessStrip";
 import IoPanel from "./components/IoPanel";
 import TopologyPanel from "./components/TopologyPanel";
+import ApmPanel from "./components/ApmPanel";
 import RunConsole from "./components/RunConsole";
 import Composer from "./components/Composer";
 import ProjectManager from "./components/ProjectManager";
@@ -11,9 +12,11 @@ import AuthScreen from "./components/AuthScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import SessionDrawer from "./components/SessionDrawer";
 import UsageStrip from "./components/UsageStrip";
+import AccountChip from "./components/AccountChip";
 import SideResizer, { useSideWidth } from "./components/SideResizer";
 import {
   AUTH_EXPIRED_EVENT,
+  activateClaudeAccount,
   continueRun,
   createRun,
   deleteRun,
@@ -23,6 +26,7 @@ import {
   getProjects,
   getToken,
   getUsage,
+  listClaudeAccounts,
   listRuns,
   logout,
   openRunSocket,
@@ -31,6 +35,7 @@ import {
 } from "./api/client";
 import {
   AgentDef,
+  ClaudeAccounts,
   LogEvent,
   ModelDef,
   ProjectDef,
@@ -40,7 +45,7 @@ import {
   UserProfile,
 } from "./types";
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
-import { activeSubAgents, planOf } from "./harness";
+import { activeSubAgents, planOf, registeredAgents } from "./harness";
 import "./App.css";
 
 /** run 이 없을 때 넘길 빈 목록. 매번 새로 만들면 콘솔의 memo 가 깨진다. */
@@ -75,6 +80,10 @@ export default function App() {
   const [focusStage, setFocusStage] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  // 실행에 쓰는 Claude 계정들. 한도에 걸리면 머리의 칩에서 바꿔 탄다.
+  const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
+  // sub-agent 를 다시 읽게 하려고 다시 열기로 한 run. 도는 중이면 멈춘 뒤에 잇는다.
+  const [relaunchId, setRelaunchId] = useState<string | null>(null);
   const side = useSideWidth();
   const closeSocketRef = useRef<() => void>();
   // 소켓에서 온 이벤트를 한 프레임 동안 모아 두는 자리.
@@ -115,7 +124,19 @@ export default function App() {
     setActiveRunId(null);
     setSessionsOpen(false);
     setUsage(null);
+    setAccounts(null);
   }, []);
+
+  /** 실행에 쓰는 Claude 계정을 바꾼다. 다음 턴부터 적용되고, 제한 창 표시도 그 계정 것으로 바뀐다. */
+  async function handleSelectAccount(id: string) {
+    setSendError(null);
+    try {
+      setAccounts(await activateClaudeAccount(id));
+      setUsage(await getUsage());
+    } catch (err) {
+      setSendError(`계정을 바꾸지 못했습니다 — ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   useEffect(() => {
     if (!getToken()) {
@@ -161,6 +182,9 @@ export default function App() {
     getUsage()
       .then(setUsage)
       .catch(() => setUsage(null));
+    listClaudeAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts(null));
     listRuns()
       .then((runs) => {
         const map: Record<string, RunSummary> = {};
@@ -198,18 +222,18 @@ export default function App() {
         getUsage()
           .then(setUsage)
           .catch(() => undefined);
-        setRunsById((prev) => {
-          const existing = prev[runId];
-          if (!existing) return prev;
-          const exitCode =
-            typeof event.data === "object" && event.data && "exit_code" in (event.data as any)
-              ? (event.data as any).exit_code
-              : null;
-          return {
-            ...prev,
-            [runId]: { ...existing, status: event.text as RunSummary["status"], exit_code: exitCode },
-          };
-        });
+        // 상태는 서버에 다시 묻는다. 전에는 run_end 의 글(success/error)을 그대로 상태로
+        // 썼는데, 이어 말한 세션에 다시 연결하면 서버가 **앞 턴의 run_end 까지 되짚어**
+        // 보내므로 지금 도는 run 이 "끝남"으로 뒤집혔다 — 그 뒤로 화면은 멈춘 세션으로
+        // 알고 답할 자리를 다시 열고, 다시 열기는 "아직 실행 중" 으로 거절당했다.
+        // 서버는 run_end 를 내기 전에 상태를 먼저 바꾸므로, 여기서 물으면 늘 맞는 값이다.
+        listRuns()
+          .then((runs) => {
+            const fresh = runs.find((r) => r.id === runId);
+            if (!fresh) return;
+            setRunsById((prev) => (prev[runId] ? { ...prev, [runId]: fresh } : prev));
+          })
+          .catch(() => undefined);
       }
     });
     closeSocketRef.current = close;
@@ -276,6 +300,29 @@ ${text}` : text));
           ? `이 세션에 이어서 보내지 못했습니다 — ${detail}`
           : `실행을 시작하지 못했습니다 — ${detail}`,
       );
+    }
+  }
+
+  /**
+   * 같은 세션에 이어서 한 턴을 보낸다 — 결과 보고의 물음에 답할 때, 세션을 다시 열 때.
+   * 전역 입력판의 지시문과 달리 대상은 그 run 의 agent 그대로다: 묻는 쪽이 답을 받는다.
+   */
+  async function sendTurn(run: RunSummary, text: string, failNote: string) {
+    setSendError(null);
+    try {
+      const next = await continueRun(
+        run.id,
+        text,
+        run.agent_key,
+        run.project ?? project,
+        model,
+        effort,
+      );
+      setRunsById((prev) => ({ ...prev, [next.id]: next }));
+      setActiveRunId(next.id);
+      connect(next.id);
+    } catch (err) {
+      setSendError(`${failNote} — ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -396,6 +443,45 @@ ${text}` : text));
     () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
+  // 이 세션의 CLI 가 실제로 읽어 들인 sub-agent. 세션이 없으면 모른다(null).
+  const registered = useMemo(
+    () => (activeRun ? registeredAgents(activeEvents) : null),
+    [activeRun, activeEvents],
+  );
+
+  // 콘솔은 memo 라 넘기는 함수가 매번 바뀌면 그때마다 다시 그려진다. 겉은 고정해 두고
+  // 속만 렌더마다 갈아 끼운다 — 최신 run·프로젝트·모델을 보되 참조는 그대로.
+  const answerImpl = useRef<(text: string) => void>(() => undefined);
+  answerImpl.current = (text: string) => {
+    if (!activeRun || activeRun.status === "running") return;
+    void sendTurn(activeRun, text, "답을 보내지 못했습니다");
+  };
+  const handleAnswer = useCallback((text: string) => answerImpl.current(text), []);
+
+  /**
+   * 세션 다시 열기 — sub-agent 를 다시 읽게 한다.
+   *
+   * CLI 는 프로세스마다 `.claude/agents` 를 다시 읽고, 턴마다 프로세스가 새로 뜬다.
+   * 그러니 같은 세션에 한 턴을 더 보내는 것이 곧 다시 읽는 것이다. 도는 중이면 먼저
+   * 멈추고, 멈춘 것이 확인되면(run_end) 아래 effect 가 잇는다.
+   */
+  function handleRelaunch() {
+    if (!activeRun) return;
+    setRelaunchId(activeRun.id);
+    if (activeRun.status === "running") void stopRun(activeRun.id);
+  }
+
+  useEffect(() => {
+    if (!relaunchId || !activeRun || activeRun.id !== relaunchId) return;
+    if (activeRun.status === "running") return;
+    setRelaunchId(null);
+    const text =
+      "sub-agent 등록을 위해 세션을 다시 열었다. 앞 턴에서 이미 한 일은 되풀이하지 말고, " +
+      `직전 지시를 이어서 진행해: ${activeRun.prompt}`;
+    void sendTurn(activeRun, text, "세션을 다시 열지 못했습니다");
+    // sendTurn 은 이 렌더의 project·model·effort 를 쓰는 함수라 deps 에 넣지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relaunchId, activeRun?.id, activeRun?.status]);
 
   // 도는 sub-agent 가 어느 스테이지 소속인지 — 화면을 그리로 옮기기 위한 좌표다.
   const liveStage = useMemo(() => {
@@ -456,6 +542,7 @@ ${text}` : text));
         onUpdated={setUser}
         onClose={() => setView("console")}
         onLogout={handleLogout}
+        onAccountsChanged={setAccounts}
       />
     );
   }
@@ -466,6 +553,13 @@ ${text}` : text));
       <header className="app-header">
         <div className="app-header-mark">ARCHITECTURE&#8209;AGENT</div>
         <UsageStrip usage={usage} />
+        {/* 사용량 띠가 "차단"을 말하는 바로 옆에 다른 계정으로 가는 길이 있어야 한다. */}
+        <AccountChip
+          accounts={accounts}
+          limit={usage?.rate_limit ?? null}
+          onSelect={(id) => void handleSelectAccount(id)}
+          onManage={() => setView("settings")}
+        />
         <div className="app-header-actions">
           <button
             className="app-path-badge app-path-badge--ok"
@@ -512,6 +606,9 @@ ${text}` : text));
             following={follow}
             liveStage={liveStage}
             onFollow={() => setFollow(true)}
+            registered={registered}
+            onRelaunch={activeRun ? handleRelaunch : undefined}
+            relaunching={relaunchId !== null}
           />
 
           {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를
@@ -519,11 +616,17 @@ ${text}` : text));
           {/* 운영 단계의 산출물은 status-middleware.json 하나이고, 그건 파일 목록으로
               보는 것보다 토폴로지로 보는 편이 훨씬 낫다. 그래서 그 자리를 바꿔 끼운다. */}
           {phase === "operate" ? (
-            <TopologyPanel
-              project={project}
-              onCheck={hasStatusAgent ? runCheck : null}
-              onSendToContext={sendToContext}
-            />
+            <>
+              <TopologyPanel
+                project={project}
+                onCheck={hasStatusAgent ? runCheck : null}
+                onSendToContext={sendToContext}
+              />
+              {/* 두 판, 두 길. 위는 agent 가 「지금 점검」으로 한 번 돌아 남긴 로그 판정이고,
+                  아래는 백엔드가 Scouter 에서 직접 읽는 살아 있는 수치다. 주기적으로 보는 것은
+                  아래여야 한다 — 위를 주기로 돌리면 토큰이 흘러나간다. */}
+              <ApmPanel project={project} />
+            </>
           ) : (
             <IoPanel phase={phase} project={project} activeRun={activeRun} />
           )}
@@ -538,6 +641,8 @@ ${text}` : text));
             events={activeEvents}
             onOpenSessions={openSessions}
             onNewSession={handleNewSession}
+            onAnswer={handleAnswer}
+            agentKeys={allAgentKeys}
           />
           {sendError && (
             <div className="send-error" role="alert">

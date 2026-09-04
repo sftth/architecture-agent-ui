@@ -1,4 +1,8 @@
 import type {
+  ApmAccountView,
+  ApmSnapshot,
+  ClaudeAccount,
+  ClaudeAccounts,
   DirListing,
   FileText,
   LogEvent,
@@ -156,6 +160,75 @@ export async function createRun(
       effort: effort || null,
     }),
   });
+}
+
+// ── Claude 계정 ──────────────────────────────────────────
+// claude CLI 의 로그인은 기기에 하나라, 한도에 걸린 계정을 다른 계정으로 바꿔 타려면
+// 터미널에서 로그아웃·로그인을 다시 해야 했다. 여기서는 `claude setup-token` 으로 만든
+// 토큰을 계정마다 등록해 두고, 실행할 때 어느 것을 쓸지 고른다.
+
+export async function listClaudeAccounts(): Promise<ClaudeAccounts> {
+  return request<ClaudeAccounts>("/api/claude-accounts");
+}
+
+export async function addClaudeAccount(
+  name: string,
+  kind: string,
+  secret: string,
+): Promise<ClaudeAccount> {
+  return request<ClaudeAccount>("/api/claude-accounts", {
+    method: "POST",
+    body: JSON.stringify({ name, kind, secret }),
+  });
+}
+
+export async function deleteClaudeAccount(id: string): Promise<void> {
+  await request<void>(`/api/claude-accounts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** 다음 실행부터 이 계정으로. "device" 면 기기 로그인 그대로. */
+export async function activateClaudeAccount(id: string): Promise<ClaudeAccounts> {
+  return request<ClaudeAccounts>(`/api/claude-accounts/${encodeURIComponent(id)}/activate`, {
+    method: "POST",
+  });
+}
+
+/** 가장 짧은 실제 호출로 토큰이 맞는지, 지금 한도에 걸렸는지 본다. 몇백 토큰이 든다. */
+export async function checkClaudeAccount(id: string): Promise<ClaudeAccount> {
+  return request<ClaudeAccount>(`/api/claude-accounts/${encodeURIComponent(id)}/check`, {
+    method: "POST",
+  });
+}
+
+// ── APM(Scouter) ──────────────────────────────────────────
+
+/** 마지막으로 읽은 값. 아직 없으면 null. */
+export async function getApm(project: string): Promise<ApmSnapshot | null> {
+  return request<ApmSnapshot | null>(`/api/apm?project=${encodeURIComponent(project)}`);
+}
+
+/** 지금 읽는다 — 백엔드가 옆에 띄운 Scouter webapp(6100 클라이언트)에서 REST 를 한 번 훑는다.
+ *  webapp 이 없으면 띄우고 기다리므로 첫 호출은 십여 초 걸릴 수 있다. */
+export async function refreshApm(project: string): Promise<ApmSnapshot> {
+  return request<ApmSnapshot>(`/api/apm/refresh?project=${encodeURIComponent(project)}`, {
+    method: "POST",
+  });
+}
+
+/** Collector 로그인 계정 — Desktop Client 에 넣는 것과 같은 id·비밀번호. */
+export async function getApmAccount(project: string): Promise<ApmAccountView> {
+  return request<ApmAccountView>(`/api/apm/account?project=${encodeURIComponent(project)}`);
+}
+
+export async function setApmAccount(project: string, id: string, password: string): Promise<ApmAccountView> {
+  return request<ApmAccountView>(`/api/apm/account?project=${encodeURIComponent(project)}`, {
+    method: "PUT",
+    body: JSON.stringify({ id, password }),
+  });
+}
+
+export async function stopApmSidecar(): Promise<void> {
+  await request<void>("/api/apm/stop", { method: "POST" });
 }
 
 export async function getModels(): Promise<{ models: ModelDef[] }> {

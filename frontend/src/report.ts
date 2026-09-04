@@ -1,4 +1,5 @@
 import { LogEvent } from "./types";
+import { dispatchedAgent } from "./harness";
 
 /**
  * 결과 보고에 쓸 실행 요약.
@@ -43,13 +44,13 @@ function inputOf(data: unknown): Record<string, unknown> | null {
   return d ? obj(d.input) : null;
 }
 
-/** Agent/Task 호출이면 그 대상 sub-agent 이름. */
+/**
+ * Agent/Task 호출이면 그 대상 sub-agent 이름.
+ * 하네스와 같은 눈으로 읽는다 — plan 이 general-purpose 를 빌려 intent-impl 을 돌리면
+ * 여기도 intent-impl 이라 적어야 하네스의 줄과 보고의 줄이 같은 이름을 말한다.
+ */
 function dispatched(data: unknown): string | null {
-  const d = obj(data);
-  if (!d) return null;
-  const name = str(d.name);
-  if (name !== "Agent" && name !== "Task") return null;
-  return str(inputOf(data)?.subagent_type ?? null);
+  return dispatchedAgent(data);
 }
 
 function idOf(data: unknown, field: "id" | "tool_use_id"): string | null {

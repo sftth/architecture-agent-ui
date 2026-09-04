@@ -1,10 +1,14 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LogEvent, RunSummary } from "../types";
 import { toBlocks } from "../transcript";
+import { activityOf, sinceText } from "../activity";
 import Markdown from "./Markdown";
 import ToolBlock from "./ToolBlock";
 import ReportCard from "./ReportCard";
 import "./RunConsole.css";
+
+/** 마지막 신호가 이보다 오래되면 "멈춘 것 같다"로 색을 바꾼다. 긴 Bash 도 대개 이 안에 든다. */
+const STALE_MS = 90_000;
 
 /** 실행 상태를 사람 말로. 화면의 다른 상태 표시와 같은 어휘를 쓴다. */
 const RUN_STATE: Record<string, string> = {
@@ -19,11 +23,17 @@ function RunConsole({
   events,
   onOpenSessions,
   onNewSession,
+  onAnswer,
+  agentKeys,
 }: {
   run?: RunSummary;
   events: LogEvent[];
   onOpenSessions: () => void;
   onNewSession: () => void;
+  /** 결과 보고의 물음에 답을 보내는 길 — 같은 세션의 다음 턴이 된다. */
+  onAnswer: (text: string) => void;
+  /** 카탈로그의 sub-agent 이름들. general-purpose 뒤에 숨은 진짜 대상을 알아보는 데 쓴다. */
+  agentKeys: string[];
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
@@ -38,6 +48,21 @@ function RunConsole({
   }
 
   const blocks = useMemo(() => toBlocks(events), [events]);
+
+  // 지금 하는 일. 도는 동안만 읽고, 마지막 신호에서 흐른 시간은 1초마다 다시 센다 —
+  // 이 시계가 이 화면에서 유일하게 스스로 뛰는 것이고, 도는 run 이 있을 때만 뛴다.
+  const running = run?.status === "running";
+  const activity = useMemo(
+    () => (running ? activityOf(events, agentKeys) : null),
+    [running, events, agentKeys],
+  );
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [running]);
 
   // 이벤트 수가 아니라 "그려진 뒤"를 기준으로 붙인다. 마크다운·표·도구 상자는 같은
   // 이벤트 수에서도 높이가 나중에 커져, events.length만 보면 마지막 줄을 놓친다.
@@ -126,6 +151,8 @@ function RunConsole({
                   {run.effort ? ` · ${run.effort}` : ""}
                 </span>
               )}
+              {/* 어느 계정으로 돌았나. 한도에 걸려 바꿔 탄 뒤 "정말 바뀌었나"를 여기서 본다. */}
+              {run.account_name && <span className="console-model"> · {run.account_name}</span>}
             </div>
           </div>
         </div>
@@ -135,7 +162,11 @@ function RunConsole({
             처럼 mono 대문자였고, 토폴로지는 「위험」 알약, 노드는 숫자 배지였다 —
             같은 뜻을 세 모양으로 말하면 셋 다 약해진다. exit 코드는 실패했을 때만 쓴다. */}
         {run.status === "running" ? (
-          <span className="console-final console-final--running">실행 중</span>
+          // "실행 중" 대신 지금 하는 일을 말한다 — 같은 자리에서 글자가 바뀌는 것이 곧
+          // 살아 있다는 표시다.
+          <span className="console-final console-final--running">
+            {activity?.verb ?? "실행 중"}
+          </span>
         ) : (
           <span className={`console-final console-final--${run.status}`}>
             {RUN_STATE[run.status] ?? run.status}
@@ -156,7 +187,7 @@ function RunConsole({
           </div>
         )}
         <div ref={flowRef}>
-        {blocks.map((block) => {
+        {blocks.map((block, index) => {
           if (block.kind === "ask") {
             return (
               <div key={block.key} className="ask">
@@ -167,12 +198,16 @@ function RunConsole({
           }
           if (block.kind === "tool") return <ToolBlock key={block.key} tool={block.tool} />;
           if (block.kind === "report") {
+            // 답할 수 있는 물음은 세션의 마지막 말뿐이고, run 이 멈춰 있어야 한다 —
+            // 도는 중에는 이어 말할 수 없고(백엔드가 거절한다), 지난 턴의 물음은 이미 지났다.
+            const last = index === blocks.length - 1 && run.status !== "running";
             return (
               <ReportCard
                 key={block.key}
                 text={block.text}
                 report={block.report}
                 asks={block.asks}
+                onAnswer={last ? onAnswer : undefined}
               />
             );
           }
@@ -200,7 +235,31 @@ function RunConsole({
             </div>
           );
         })}
-        {blocks.length === 0 && <div className="console-line line--system">연결 중</div>}
+        {blocks.length === 0 && !activity && <div className="console-line line--system">연결 중</div>}
+
+        {/* 로그의 맨 끝 — 지금 하는 일. 글이 멈춰도 이 줄이 살아 있어 "돌고 있다"를 말하고,
+            마지막 신호가 오래됐으면 그 숫자가 "멈춘 것 같다"를 말한다. */}
+        {activity && (
+          <div className={`activity activity--${activity.kind}`} role="status" aria-live="polite">
+            <span className="activity-pulse" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="activity-verb">{activity.verb}</span>
+            {activity.detail && <span className="activity-detail">{activity.detail}</span>}
+            {activity.lastSignal && (
+              <span
+                className={`activity-since${
+                  now - Date.parse(activity.lastSignal) > STALE_MS ? " activity-since--stale" : ""
+                }`}
+                title="마지막으로 로그가 온 뒤 흐른 시간. 오래되면 멈춘 것일 수 있습니다."
+              >
+                {sinceText(activity.lastSignal, now)}
+              </span>
+            )}
+          </div>
+        )}
         </div>
       </div>
     </div>

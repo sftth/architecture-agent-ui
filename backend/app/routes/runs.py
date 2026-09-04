@@ -63,11 +63,11 @@ async def list_runs(user: User = Depends(current_user)):
 
 @router.get("/api/usage", response_model=UsageSummary)
 async def usage(user: User = Depends(current_user)):
-    """상단 띠가 읽는 값. 제한 창은 계정 전체, 누적은 이 계정의 run 들만 더한다."""
+    """상단 띠가 읽는 값. 제한 창은 지금 고른 Claude 계정의 것, 누적은 이 사용자의 run 들만 더한다."""
     runs = [r for r in run_manager.runs.values() if r.user_id == user.id]
     done = [r for r in runs if r.usage is not None]
     return UsageSummary(
-        rate_limit=run_manager.rate_limit,
+        rate_limit=run_manager.rate_limit_for(user.id),
         runs=len(runs),
         tokens=sum(r.usage.total_tokens for r in done),
         cost_usd=sum(r.usage.cost_usd for r in done),
