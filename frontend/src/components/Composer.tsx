@@ -31,6 +31,8 @@ export default function Composer({
   model,
   effort,
   onChangeModel,
+  handoff,
+  onClearHandoff,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -49,6 +51,9 @@ export default function Composer({
   model: string;
   effort: string;
   onChangeModel: (model: string, effort: string) => void;
+  /** 압축한 앞 세션의 인계 문서. 다음 지시문 뒤에 붙어 나간다. */
+  handoff?: string | null;
+  onClearHandoff?: () => void;
 }) {
   const [openMenu, setOpenMenu] = useState<"agent" | "model" | null>(null);
   // 끌어온 것이 여기 놓인다는 것을 테두리로 알린다. 놓기 전에는 알 방법이 없다.
@@ -192,11 +197,29 @@ export default function Composer({
         /* 자리가 넉넉하니 보내는 법을 한 문장으로 다 적는다 — 이 안내를 읽는 유일한 자리다. */
         placeholder={
           agent
-            ? `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일을 끌어다 놓기)`
+            ? handoff
+              ? `인계를 받은 새 세션 — @${agent.key} 에게 이어서 무엇을 시킬지 적어 주세요`
+              : `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기 · /compact · /clear)`
             : "아래에서 plan 을 고르고, 무엇을 시킬지 적어 주세요"
         }
         spellCheck={false}
       />
+
+      {/* 압축한 앞 세션의 인계 문서가 실려 있다. 보이지 않게 붙이면 왜 첫 턴이 무거운지
+          아무도 모른다 — 있다는 것과 크기를 말하고, 떼어 낼 길을 옆에 둔다. */}
+      {handoff && (
+        <div className="composer-handoff" title={handoff}>
+          <HandoffIcon />
+          <span className="composer-handoff-text">
+            앞 세션 인계 문서 첨부 · {handoff.length.toLocaleString()}자 — 다음 지시문 뒤에 붙어 나갑니다
+          </span>
+          {onClearHandoff && (
+            <button type="button" className="composer-handoff-x" onClick={onClearHandoff} aria-label="인계 문서 떼기" title="인계 문서 떼기">
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 아래: 고르는 것과 보내는 것. 왼쪽이 "누구에게 · 무엇으로", 오른쪽이 "보내기". */}
       <div className="composer-bar">
@@ -252,6 +275,15 @@ export default function Composer({
         )}
       </div>
     </div>
+  );
+}
+
+function HandoffIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path d="M4 2.5h5.5L12.5 5.5v8H4z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M9.5 2.5v3h3M6 8h4.5M6 10.5h4.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }
 

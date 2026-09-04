@@ -133,6 +133,43 @@
 }
 
 /* 프로젝트가 없을 때만 나온다 — 실행이 갈 곳이 없다는 뜻이라 amber 로 소리 낸다. */
+/* 압축 뒤 첫 지시문에 실려 나갈 인계 문서. 입력칸과 아랫줄 사이의 한 줄 쪽지다. */
+.composer-handoff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--space-1) 6px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--line-cyan);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: rgba(74, 143, 168, 0.08);
+  color: var(--paper-300);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+}
+
+.composer-handoff svg { flex: none; color: var(--line-cyan); }
+
+.composer-handoff-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-handoff-x {
+  flex: none;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  color: var(--paper-500);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.composer-handoff-x:hover { color: var(--paper-100); }
+
 .composer-noproject {
   flex: none;
   margin-left: var(--space-2);

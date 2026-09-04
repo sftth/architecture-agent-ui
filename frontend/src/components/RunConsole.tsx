@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import { LogEvent, RunSummary } from "../types";
 import { toBlocks } from "../transcript";
 import { activityOf, sinceText } from "../activity";
+import { CONTEXT_WARN, ContextSize, formatTokens } from "../context";
 import Markdown from "./Markdown";
 import ToolBlock from "./ToolBlock";
 import ReportCard from "./ReportCard";
@@ -25,6 +26,9 @@ function RunConsole({
   onNewSession,
   onAnswer,
   agentKeys,
+  context,
+  onCompact,
+  compacting,
 }: {
   run?: RunSummary;
   events: LogEvent[];
@@ -34,6 +38,11 @@ function RunConsole({
   onAnswer: (text: string) => void;
   /** 카탈로그의 sub-agent 이름들. general-purpose 뒤에 숨은 진짜 대상을 알아보는 데 쓴다. */
   agentKeys: string[];
+  /** 이 세션의 문맥이 얼마나 찼나(마지막 API 호출의 입력). 끝난 턴이 없으면 null. */
+  context?: ContextSize | null;
+  /** 세션 압축 — 인계 문서를 받아 새 세션으로 잇는다. 도는 중이면 없다. */
+  onCompact?: () => void;
+  compacting?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
@@ -156,6 +165,38 @@ function RunConsole({
             </div>
           </div>
         </div>
+        {/* 문맥 게이지. 턴마다 대화 전체가 다시 들어가므로 여기가 차오르는 것이 곧 토큰
+            낭비다. 60% 를 넘으면 amber 로 바뀌고 압축 단추가 나온다 — 자동으로 하지 않는다.
+            압축은 요약이라 세부가 빠질 수 있고, 그 판단은 사람 몫이다. */}
+        {context && (
+          <span
+            className={`console-ctx${context.used / context.limit >= CONTEXT_WARN ? " console-ctx--warn" : ""}`}
+            title={
+              `문맥 ${context.used.toLocaleString()} / ${context.limit.toLocaleString()} 토큰` +
+              (context.exact ? "\n마지막 API 호출에 들어간 입력(캐시 포함)" : "\n마지막 턴의 입력 합계(호출별 값이 없는 옛 로그)") +
+              "\n턴마다 대화 전체가 다시 들어간다. 무거워지면 /compact 로 인계하고 새 세션으로 잇는다."
+            }
+          >
+            <span className="console-ctx-bar" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, Math.round((context.used / context.limit) * 100))}%` }} />
+            </span>
+            문맥 {formatTokens(context.used)}{context.exact ? "" : "~"} / {formatTokens(context.limit)}
+          </span>
+        )}
+        {onCompact && run.status !== "running" && (
+          <button
+            type="button"
+            className="console-compact"
+            onClick={onCompact}
+            disabled={compacting}
+            title={
+              "세션 압축 (/compact)\n이 세션에 인계 문서를 한 턴 받아 새 세션의 첫 지시에 붙인다. " +
+              "지시문 이력은 세션 목록에 그대로 남는다."
+            }
+          >
+            {compacting ? "인계 받는 중…" : "압축"}
+          </button>
+        )}
         {/* 중지는 아래 입력판의 보내기 단추가 겸한다 — 보내는 것과 멈추는 것을
             두 자리에 나눠 두면 어느 쪽이 지금 살아 있는 단추인지 매번 찾아야 한다. */}
         {/* 상태는 화면 전체에서 한 가지 말투로 말한다. 전에는 여기만 `SUCCESS (EXIT 0)`

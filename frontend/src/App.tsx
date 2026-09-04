@@ -47,11 +47,29 @@ import {
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
 import { activeSubAgents, planOf, registeredAgents } from "./harness";
 import { activityOf } from "./activity";
+import { contextOf } from "./context";
 import AgentSprites from "./sprites/AgentSprites";
 import "./App.css";
 
 /** run 이 없을 때 넘길 빈 목록. 매번 새로 만들면 콘솔의 memo 가 깨진다. */
 const EMPTY_EVENTS: LogEvent[] = [];
+
+/**
+ * 세션 압축 — 인계 문서를 받는 한 턴.
+ *
+ * `claude -p` 가 내장 `/compact` 를 처리하는지는 확인된 바 없고, 처리해도 CLI 안의 요약이라
+ * 화면이 무엇이 남고 무엇이 빠졌는지 볼 수 없다. 그래서 agent 에게 인계 문서를 **답으로**
+ * 받아 새 세션의 첫 지시문에 붙인다 — 요약이 눈에 보이고, 마음에 안 들면 떼어 낼 수 있다.
+ * 도구를 쓰지 말라고 못박는 이유: 압축은 정리이지 일이 아니고, 이 턴이 파일을 건드리면
+ * 인계와 실제 상태가 어긋난다.
+ */
+const HANDOFF_PROMPT =
+  "이 세션을 압축한다. 새 세션이 그대로 이어받을 수 있게 인계 문서를 적어라.\n" +
+  "1) 지금까지 받은 지시와 그 의도  2) 한 일과 바꾼 파일(경로)  3) 내린 결정과 이유  " +
+  "4) 남은 일과 다음 단계  5) 주의할 점(함정·전제)\n" +
+  "도구를 쓰지 말고, 파일을 만들거나 바꾸지 말고, 답으로만 적어라. 3000자 안으로.";
+
+const HANDOFF_HEADER = "[앞 세션 인계 — 아래는 압축된 앞 세션의 인계 문서다. 되풀이하지 말고 이어서 진행한다]";
 
 export default function App() {
   // undefined: 세션 확인 중 / null: 로그아웃 상태
@@ -86,6 +104,10 @@ export default function App() {
   const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
   // sub-agent 를 다시 읽게 하려고 다시 열기로 한 run. 도는 중이면 멈춘 뒤에 잇는다.
   const [relaunchId, setRelaunchId] = useState<string | null>(null);
+  // 세션 압축 — 인계 문서를 받고 있는 세션과, 요청 전의 턴 수(늘어나면 답이 온 것이다).
+  const [compacting, setCompacting] = useState<{ id: string; turns: number } | null>(null);
+  // 압축한 앞 세션의 인계 문서. 새 세션의 첫 지시문 뒤에 붙어 나가고 그 뒤 비워진다.
+  const [handoff, setHandoff] = useState<string | null>(null);
   const side = useSideWidth();
   const closeSocketRef = useRef<() => void>();
   // 소켓에서 온 이벤트를 한 프레임 동안 모아 두는 자리.
@@ -242,7 +264,19 @@ export default function App() {
   }
 
   async function handleRun() {
-    if (!agentKey || !prompt.trim()) return;
+    const text = prompt.trim();
+    // 슬래시 명령은 CLI 로 보내지 않는다 — 이 화면의 동작이다.
+    if (/^\/clear\b/i.test(text)) {
+      setPrompt("");
+      handleNewSession();
+      return;
+    }
+    if (/^\/compact\b/i.test(text)) {
+      setPrompt("");
+      handleCompact();
+      return;
+    }
+    if (!agentKey || !text) return;
     // 프로젝트를 안 고르면 에이전트가 되묻다 끝나므로, 보내기 전에 붙잡는다.
     if (!project) {
       setGateOpen(true);
@@ -284,15 +318,19 @@ ${text}` : text));
     // 보고 있는 세션이 있으면 그 세션에 이어서 묻는다. 전에는 늘 새로 만들어서, 이력에서
     // 세션을 골라 물어도 그 옆에 새 세션이 하나 더 생겼다.
     const held = activeRunId && activeRun && activeRun.status !== "running" ? activeRunId : null;
+    // 압축한 앞 세션의 인계 문서는 새 세션의 첫 지시문 **뒤에** 붙는다 — 제목은 지시문
+    // 첫 줄에서 오므로 사람이 적은 말이 앞에 서야 한다.
+    const text = !held && handoff ? `${prompt.trim()}\n\n---\n${HANDOFF_HEADER}\n\n${handoff}` : prompt;
     try {
       const run = held
-        ? await continueRun(held, prompt, agentKey, withProject, model, effort)
-        : await createRun(agentKey, prompt, withProject, model, effort);
+        ? await continueRun(held, text, agentKey, withProject, model, effort)
+        : await createRun(agentKey, text, withProject, model, effort);
       setRunsById((prev) => ({ ...prev, [run.id]: run }));
       setActiveRunId(run.id);
       // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
       connect(run.id);
       setPrompt("");
+      if (!held) setHandoff(null);
     } catch (err) {
       // 여기가 비어 있었다. 보내기가 실패하면 화면에서는 아무 일도 안 일어난 것과
       // 구별되지 않아, 무엇이 잘못됐는지 알 길이 없었다. 쓰던 지시문은 지우지 않는다.
@@ -326,6 +364,27 @@ ${text}` : text));
     } catch (err) {
       setSendError(`${failNote} — ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * 세션 압축 — 두 단계다.
+   *
+   * 1. 지금 세션에 인계 문서를 한 턴 받는다(HANDOFF_PROMPT). 그동안 콘솔 단추는 "인계 받는 중".
+   * 2. 그 턴이 끝나면 답을 `handoff` 에 담고 새 세션으로 옮긴다. 다음 지시문에 붙어 나간다.
+   *
+   * 앞 세션은 지우지 않는다 — 지시문 이력은 세션 목록에 그대로 있고, 언제든 다시 열 수 있다.
+   */
+  function handleCompact() {
+    if (!activeRun) {
+      setSendError("압축할 세션이 없습니다 — 먼저 세션을 열거나 이력에서 고르세요.");
+      return;
+    }
+    if (activeRun.status === "running") {
+      setSendError("도는 중에는 압축할 수 없습니다 — 끝나거나 멈춘 뒤에 다시 시도하세요.");
+      return;
+    }
+    setCompacting({ id: activeRun.id, turns: activeRun.turns });
+    void sendTurn(activeRun, HANDOFF_PROMPT, "압축 요청을 보내지 못했습니다");
   }
 
   /** 사람이 직접 화면을 옮겼다 — 보려던 자리를 도는 run 이 도로 뺏어가지 않게 한다. */
@@ -445,6 +504,40 @@ ${text}` : text));
     () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
+  // 이 세션의 문맥 크기 — 마지막 API 호출의 입력. 끝난 턴이 하나는 있어야 값이 있다.
+  const context = useMemo(() => (activeRun ? contextOf(activeEvents) : null), [activeRun, activeEvents]);
+
+  // 압축 2단계 — 인계 턴이 끝나면 답을 담고 새 세션으로 옮긴다(handleCompact 참조).
+  useEffect(() => {
+    if (!compacting || !activeRun || activeRun.id !== compacting.id) return;
+    if (activeRun.status === "running" || activeRun.turns <= compacting.turns) return;
+    // 인계 턴의 답 — 마지막 user 이벤트 뒤의 result, 없으면 마지막 assistant 글.
+    let start = 0;
+    for (let i = activeEvents.length - 1; i >= 0; i--) {
+      if (activeEvents[i].kind === "user") {
+        start = i;
+        break;
+      }
+    }
+    let answer: string | null = null;
+    for (let i = activeEvents.length - 1; i > start; i--) {
+      const event = activeEvents[i];
+      if ((event.kind === "result" || event.kind === "assistant") && event.text?.trim()) {
+        answer = event.text.trim();
+        break;
+      }
+    }
+    // 성공으로 끝났는데 result 가 아직 안 왔을 수 있다 — 이벤트가 더 오면 다시 본다.
+    if (!answer && activeRun.status === "success") return;
+    setCompacting(null);
+    if (!answer) {
+      setSendError("인계 문서를 받지 못했습니다 — 세션은 그대로 있습니다.");
+      return;
+    }
+    setHandoff(answer);
+    handleNewSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compacting, activeRun?.id, activeRun?.status, activeRun?.turns, activeEvents.length]);
   // 지금 하는 일 — 콘솔 하단 줄과 같은 값. 하네스의 plan 이 위임을 걸고 기다리는지 여기서 안다.
   const activity = useMemo(
     () => (activeRun?.status === "running" ? activityOf(activeEvents, allAgentKeys) : null),
@@ -654,6 +747,9 @@ ${text}` : text));
             onNewSession={handleNewSession}
             onAnswer={handleAnswer}
             agentKeys={allAgentKeys}
+            context={context}
+            onCompact={handleCompact}
+            compacting={compacting !== null}
           />
           {sendError && (
             <div className="send-error" role="alert">
@@ -684,6 +780,8 @@ ${text}` : text));
               setModel(nextModel);
               setEffort(nextEffort);
             }}
+            handoff={handoff}
+            onClearHandoff={() => setHandoff(null)}
           />
 
           {sessionsOpen && (
