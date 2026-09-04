@@ -84,20 +84,22 @@ function RunConsole({
   // 전에는 세션 요약의 event_count 를 봤는데, 백엔드를 다시 띄운 뒤 되살린 세션은 로그를
   // 아직 안 읽어 그 수가 0 이었다 — 그래서 첫 이벤트부터 곧장 "다 왔다"가 되어 숨기지 못했다.
   // 표시가 없는 옛 백엔드를 위해, 새 이벤트가 600ms 동안 없으면 그때도 끝난 것으로 친다.
-  const [replayDone, setReplayDone] = useState(false);
+  //
+  // 같은 세션에 이어 말하거나 압축할 때도 소켓을 다시 열어 기록을 처음부터 다시 받는다 —
+  // run 의 id 는 그대로다. 그래서 "다 왔다"는 id 가 아니라 **지금 들고 있는 이벤트**에서
+  // 읽는다: 목록이 비워지면(다시 연결) 다시 숨기고, 표시가 들어오면 보인다.
+  const ended = useMemo(() => hasReplayEnd(events), [events]);
+  const [timedOut, setTimedOut] = useState(false);
+  const empty = events.length === 0;
   useEffect(() => {
-    setReplayDone(false);
-  }, [run?.id]);
+    if (empty) setTimedOut(false);
+  }, [empty, run?.id]);
   useEffect(() => {
-    if (replayDone || !run) return;
-    if (hasReplayEnd(events)) {
-      setReplayDone(true);
-      return;
-    }
-    const id = setTimeout(() => setReplayDone(true), 600);
+    if (ended || timedOut || !run) return;
+    const id = setTimeout(() => setTimedOut(true), 600);
     return () => clearTimeout(id);
-  }, [replayDone, run, events]);
-  const replaying = Boolean(run) && !replayDone;
+  }, [ended, timedOut, run, events]);
+  const replaying = Boolean(run) && !ended && !timedOut;
 
   // 이벤트 수가 아니라 "그려진 뒤"를 기준으로 붙인다. 마크다운·표·도구 상자는 같은
   // 이벤트 수에서도 높이가 나중에 커져, events.length만 보면 마지막 줄을 놓친다.
