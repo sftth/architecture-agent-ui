@@ -43,6 +43,44 @@ MAX_EVENT_DATA_CHARS = 32 * 1024
 # 남는 실패 확률은 2% 아래다.
 AGENT_REGISTER_ATTEMPTS = 6
 
+# ── 문맥 압축 ────────────────────────────────────────────────────────────────
+# CLI 가 스스로 압축할 때 하는 일과 같다: 지금 대화에 "이어갈 수 있게 요약하라"를 한 턴 보내고,
+# 그 답을 새 대화의 첫 메시지로 삼는다. 도구를 쓰지 말라고 못박는 이유 — 요약은 정리이지
+# 일이 아니고, 이 턴이 파일을 건드리면 요약과 실제 상태가 어긋난다.
+COMPACT_PROMPT = (
+    "이 대화의 문맥을 압축한다. 지금까지의 대화를, 새 문맥에서 그대로 이어갈 수 있도록 요약하라.\n"
+    "반드시 담을 것: 사용자의 요청과 의도 · 진행한 작업과 바꾼 파일(경로) · 확인된 사실과 내린 결정 · "
+    "아직 끝나지 않은 일과 다음 단계 · 주의할 점(함정·전제).\n"
+    "도구를 쓰지 말고, 파일을 만들거나 바꾸지 말고, 답으로만 적는다."
+)
+COMPACT_HEADER = (
+    "이 세션은 문맥이 가득 차 압축된 앞 대화에서 이어진다. 아래는 그 대화의 요약이다. "
+    "요약을 바탕으로, 이미 한 일은 되풀이하지 말고 이어서 진행한다."
+)
+
+
+def context_tokens(events: List[LogEvent]) -> Optional[int]:
+    """마지막 API 호출에 들어간 입력 토큰 — result 의 usage.iterations 마지막 항목.
+
+    합계(usage.input_tokens 등)는 턴 안의 호출을 전부 더한 것이라 문맥이 아니다.
+    화면의 context.ts 와 같은 계산이다.
+    """
+    for event in reversed(events):
+        if event.kind != "result" or not isinstance(event.data, dict):
+            continue
+        usage = event.data.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        iterations = usage.get("iterations")
+        last = iterations[-1] if isinstance(iterations, list) and iterations else usage
+        if not isinstance(last, dict):
+            return None
+        return sum(
+            int(last.get(key) or 0)
+            for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+        )
+    return None
+
 
 class RunState:
     def __init__(self, run_id: str, user_id: str, agent_dir: str, stage_key: str,
@@ -95,6 +133,18 @@ class RunState:
         self.agent_registered: Optional[bool] = None
         self._restart_wanted = False
         self._seq = 0
+        # ── 문맥 압축(/compact) ──
+        # CLI 의 /compact 는 print 모드에서 처리되지 않으므로 여기서 같은 일을 한다:
+        # 지금 대화에 요약을 한 턴 받고, 다음 턴은 그 요약을 첫 메시지로 삼은 **새 CLI 대화**로
+        # 연다. 화면에서는 같은 세션이 이어지고, 문맥만 줄어든다.
+        # 이 턴이 압축(요약) 턴인가.
+        self.compacting = False
+        # 요약이 받아졌고 아직 새 대화에 실리지 않았다. 다음 턴의 지시문 앞에 붙는다.
+        self.compact_summary: Optional[str] = None
+        # 압축 직전의 문맥 크기(토큰). 화면이 "얼마에서 얼마로"를 말하는 데 쓴다.
+        self.compact_before: Optional[int] = None
+        # 마지막 result 의 글 전부(이벤트에는 잘려 실리므로 따로 든다).
+        self.last_result: Optional[str] = None
 
     def summary(self) -> RunSummary:
         return RunSummary(
@@ -127,6 +177,9 @@ class RunState:
         data["agent_dir"] = self.agent_dir
         # 백엔드를 다시 띄워도 이어서 말할 수 있어야 한다 — CLI 대화 식별자를 함께 남긴다.
         data["session_id"] = self.session_id
+        # 압축 요약을 받아 둔 채 백엔드가 다시 뜨면, 다음 턴이 그것을 실어야 한다.
+        if self.compact_summary:
+            data["compact_summary"] = self.compact_summary
         return data
 
     def _emit(self, kind: str, *, text: Optional[str] = None, data=None,
@@ -152,6 +205,28 @@ class RunState:
         self.status = status
         self.exit_code = exit_code
         self.ended_at = _now()
+        if self.compacting:
+            self.compacting = False
+            summary = (self.last_result or "").strip()
+            if status == "success" and summary:
+                # 다음 턴은 이 요약을 첫 메시지로 삼은 새 CLI 대화로 열린다.
+                self.compact_summary = summary
+                self.session_id = str(uuid.uuid4())
+                self._emit(
+                    "system",
+                    text="대화를 압축했습니다",
+                    data={
+                        "subtype": "compact_end",
+                        "before": self.compact_before,
+                        "summary_chars": len(summary),
+                    },
+                )
+            else:
+                self._emit(
+                    "system",
+                    text="대화를 압축하지 못했습니다 — 세션은 그대로입니다",
+                    data={"subtype": "compact_failed", "before": self.compact_before},
+                )
         self._emit("run_end", text=status, data={"exit_code": exit_code})
         if self._log is not None:
             try:
@@ -295,6 +370,8 @@ def _handle_stream_line(run: RunState, raw_line: str):
             cost_usd=float(raw.get("total_cost_usd") or 0.0),
         )
         text = raw.get("result") or subtype or "완료"
+        # 압축 턴의 요약은 이 글 전부가 필요하다 — 이벤트에는 잘려 실린다.
+        run.last_result = str(text)
         run._emit("result", text=_truncate(str(text)), data=raw)
         return
 
@@ -377,7 +454,24 @@ async def _execute(run: RunState):
     """
     # 이 턴에 무엇을 물었는지 로그에 남긴다 — 한 세션에 여러 번 물으면 콘솔이 그 자리를
     # 알아야 질문과 답을 짝지어 보여 줄 수 있다.
-    run._emit("user", text=run.prompt, data={"full_prompt": run.full_prompt, "turn": run.turns + 1})
+    # 압축 턴은 사람의 지시가 아니다 — 말풍선 대신 "압축 중" 표시가 선다.
+    if run.compacting:
+        run.last_result = None
+        run._emit(
+            "system",
+            text="대화를 압축하는 중",
+            data={"subtype": "compact_start", "before": run.compact_before},
+        )
+    else:
+        run._emit("user", text=run.prompt, data={"full_prompt": run.full_prompt, "turn": run.turns + 1})
+
+    # 앞 턴에서 받아 둔 압축 요약이 있으면 이 턴은 **새 CLI 대화**로 열고, 요약을 지시문 앞에
+    # 싣는다 — CLI 가 스스로 압축할 때 새 문맥의 첫 메시지에 요약을 두는 것과 같은 모양이다.
+    seeded = False
+    if run.compact_summary and not run.compacting:
+        run.full_prompt = f"{COMPACT_HEADER}\n\n{run.compact_summary}\n\n---\n\n{run.full_prompt}"
+        run.compact_summary = None
+        seeded = True
 
     # 첫 턴은 대화를 열고, 이후 턴은 그 대화를 이어받는다.
     #
@@ -392,8 +486,10 @@ async def _execute(run: RunState):
         )
     # 이 턴을 이어받기로 여는가. 재시도가 이 값을 다시 계산하면 턴 수가 부풀고 첫 턴이
     # 여러 번 "새 대화 열기"로 세어지므로, 루프 밖에서 한 번만 정한다.
-    resume = run.turns > 0 and run.resumable
-    run.turns += 1
+    resume = run.turns > 0 and run.resumable and not seeded
+    # 압축 턴은 지시문 수에 넣지 않는다 — 사람이 시킨 일이 아니다.
+    if not run.compacting:
+        run.turns += 1
     # 이 턴부터는 이어받을 대화가 생긴다.
     run.resumable = True
 
@@ -578,6 +674,7 @@ class RunManager:
             usage = meta.get("usage")
             run.usage = RunUsage(**usage) if usage else None
             run.account_name = meta.get("account_name")
+            run.compact_summary = meta.get("compact_summary") or None
             # 프로세스는 백엔드와 함께 죽었다. "running" 으로 되살리면 영원히 도는
             # 것처럼 보이고 중지도 안 되므로, 끊긴 것으로 표시한다.
             run.status = "stopped" if meta.get("status") == "running" else meta.get("status", "stopped")
@@ -662,6 +759,35 @@ class RunManager:
         # 되살린 run 이면 앞 턴의 로그를 먼저 읽어 둔다 — 안 그러면 seq 가 1부터 다시
         # 시작해 앞 기록과 뒤엉킨다.
         self.load_events(run)
+        store.save_meta(run_id, run.record())
+        self._tasks[run_id] = asyncio.create_task(_execute(run))
+        return run
+
+    def compact_run(self, run_id: str) -> RunState:
+        """세션의 문맥을 압축한다(/compact).
+
+        지금 대화에 요약을 한 턴 받는다. 끝나면 _finish 가 그 요약을 받아 두고 CLI 대화
+        식별자를 새로 딴다 — 다음 턴은 요약을 첫 메시지로 삼은 새 대화로 열린다(_execute).
+        화면에서는 같은 세션이고, 지시문 이력도 그대로다.
+        """
+        run = self.runs.get(run_id)
+        if run is None:
+            raise ValueError(f"세션을 찾을 수 없습니다: {run_id}")
+        if run.status == "running":
+            raise ValueError("아직 실행 중인 세션입니다")
+        if run.turns == 0 or not run.resumable:
+            raise ValueError("압축할 대화가 없습니다")
+        if run.compact_summary:
+            raise ValueError("이미 압축되어 있습니다 — 다음 지시문부터 새 문맥으로 이어집니다")
+
+        self.load_events(run)
+        run.compacting = True
+        run.compact_before = context_tokens(run.events)
+        run.prompt = COMPACT_PROMPT
+        run.full_prompt = COMPACT_PROMPT
+        run.status = "running"
+        run.ended_at = None
+        run.exit_code = None
         store.save_meta(run_id, run.record())
         self._tasks[run_id] = asyncio.create_task(_execute(run))
         return run

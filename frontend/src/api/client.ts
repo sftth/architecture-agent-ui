@@ -303,6 +303,11 @@ export async function getRun(runId: string): Promise<{ summary: RunSummary; even
   return request<{ summary: RunSummary; events: LogEvent[] }>(`/api/runs/${runId}`);
 }
 
+/** 세션의 문맥을 압축한다(/compact). 요약 한 턴이 돌고, 다음 턴부터 새 문맥으로 이어진다. */
+export async function compactRun(runId: string): Promise<RunSummary> {
+  return request<RunSummary>(`/api/runs/${runId}/compact`, { method: "POST" });
+}
+
 export async function stopRun(runId: string): Promise<void> {
   await request<{ stopped: boolean }>(`/api/runs/${runId}/stop`, { method: "POST" });
 }

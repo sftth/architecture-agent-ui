@@ -102,6 +102,19 @@ async def delete_run(run_id: str, user: User = Depends(current_user)):
     await run_manager.delete_run(run_id)
 
 
+@router.post("/api/runs/{run_id}/compact", response_model=RunSummary)
+async def compact_run(run_id: str, user: User = Depends(current_user)):
+    """세션의 문맥을 압축한다(/compact). 요약 한 턴을 돌리고, 다음 턴부터 새 문맥으로 잇는다."""
+    run = run_manager.get_run(run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    try:
+        run = run_manager.compact_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return run.summary()
+
+
 @router.post("/api/runs/{run_id}/stop")
 async def stop_run(run_id: str, user: User = Depends(current_user)):
     run = run_manager.get_run(run_id)

@@ -4,7 +4,56 @@ import Menu, { MenuItem } from "./Menu";
 import ModelMenu from "./ModelMenu";
 import Chip from "./Chip";
 import { planOf } from "../harness";
+import { CONTEXT_WARN, ContextSize, formatTokens } from "../context";
 import "./Composer.css";
+
+/** 게이지의 칸 수. CLI 의 문맥 표시처럼 칸을 채워 보인다. */
+const GAUGE_CELLS = 20;
+
+/**
+ * 문맥 게이지 — 지금 대화가 한도의 몇 %를 쓰고 있나.
+ *
+ * 턴마다 대화 전체가 다시 들어가므로 여기가 차오르는 것이 곧 토큰 낭비다. 60% 를 넘으면
+ * amber. 압축 중이면 칸이 숨을 쉬고, 압축 직후에는 "175k → 0" 처럼 얼마에서 얼마로
+ * 줄었는지를 다음 턴이 새 크기를 말해 줄 때까지 보인다.
+ */
+function ContextGauge({ context, compacting }: { context: ContextSize | null; compacting: boolean }) {
+  if (!context && !compacting) return null;
+  const used = context?.used ?? 0;
+  const limit = context?.limit ?? 200_000;
+  const ratio = Math.min(1, used / limit);
+  const filled = Math.round(ratio * GAUGE_CELLS);
+  const pct = Math.round(ratio * 100);
+  const warn = !compacting && ratio >= CONTEXT_WARN;
+  const cls = ["composer-ctx", warn && "composer-ctx--warn", compacting && "composer-ctx--busy"]
+    .filter(Boolean)
+    .join(" ");
+
+  let label: string;
+  if (compacting) label = "압축 중…";
+  else if (context?.compacted) {
+    const before = context.compacted.before;
+    label = `압축됨 · ${before !== null ? formatTokens(before) : "?"} → 0`;
+  } else label = `${pct}% · ${formatTokens(used)}${context?.exact ? "" : "~"} / ${formatTokens(limit)}`;
+
+  const title = compacting
+    ? "대화를 요약하는 중입니다. 끝나면 다음 지시문부터 요약을 이어받은 새 문맥으로 진행합니다."
+    : context?.compacted
+      ? "방금 압축됐습니다. 다음 지시문이 새 문맥의 첫 메시지가 됩니다."
+      : `문맥 ${used.toLocaleString()} / ${limit.toLocaleString()} 토큰 — 마지막 API 호출에 들어간 입력(캐시 포함).\n` +
+        "턴마다 대화 전체가 다시 들어갑니다. 무거워지면 /compact.";
+
+  return (
+    <span className={cls} title={title} role="status">
+      <span className="composer-ctx-cells" aria-hidden="true">
+        {Array.from({ length: GAUGE_CELLS }, (_, i) => (
+          <i key={i} className={i < filled ? "on" : undefined} style={compacting ? { animationDelay: `${i * 60}ms` } : undefined} />
+        ))}
+      </span>
+      <span className="composer-ctx-label">{label}</span>
+    </span>
+  );
+}
 
 /**
  * 화면 오른쪽 아래에 고정된 전역 지시문 입력판.
@@ -31,7 +80,8 @@ export default function Composer({
   model,
   effort,
   onChangeModel,
-  compacted,
+  context,
+  compacting,
   onCompact,
   onClear,
   canCompact,
@@ -53,9 +103,11 @@ export default function Composer({
   model: string;
   effort: string;
   onChangeModel: (model: string, effort: string) => void;
-  /** 압축으로 열린 새 세션 — 첫 지시문에 "보고서를 먼저 읽어라"가 붙는다. */
-  compacted?: boolean;
-  /** 세션 압축(/compact): 새 세션 + 보고서로 맥락 잇기. */
+  /** 보고 있는 세션의 문맥 크기. 끝난 턴이 없으면 null. */
+  context?: ContextSize | null;
+  /** 압축 턴이 도는 중 — 게이지가 그 사실을 말한다. */
+  compacting?: boolean;
+  /** 세션 압축(/compact): 대화를 요약해 새 문맥으로 잇는다. 같은 세션이다. */
   onCompact?: () => void;
   /** clear(/clear): 새 세션. */
   onClear?: () => void;
@@ -160,16 +212,11 @@ export default function Composer({
         />
       )}
 
-      {/* 맨 위: 세션을 정리하는 두 아이콘. 압축은 새 세션에 "보고서를 먼저 읽어라"를 붙이고,
-          clear 는 아무것도 붙이지 않는다. 지시문을 적는 자리 바로 위에 두는 이유 — 무거워진
-          대화를 끊는 결정은 다음 말을 적기 직전에 내려진다. */}
+      {/* 맨 위: 왼쪽에 문맥 게이지, 오른쪽에 세션을 정리하는 두 아이콘(/compact · /clear).
+          지시문을 적는 자리 바로 위에 두는 이유 — 무거워진 대화를 끊는 결정은 다음 말을
+          적기 직전에 내려진다. */}
       <div className="composer-top">
-        {compacted && (
-          <span className="composer-compacted" title="/compact 로 연 세션 — 첫 지시문에 보고서를 먼저 읽으라는 한 줄이 붙는다">
-            <CompactIcon />
-            압축됨 · 보고서로 이어서
-          </span>
-        )}
+        <ContextGauge context={context ?? null} compacting={Boolean(compacting)} />
         <span className="composer-grow" />
         {onCompact && (
           <button
@@ -240,9 +287,7 @@ export default function Composer({
         /* 자리가 넉넉하니 보내는 법을 한 문장으로 다 적는다 — 이 안내를 읽는 유일한 자리다. */
         placeholder={
           agent
-            ? compacted
-              ? `압축한 새 세션 — @${agent.key} 에게 이어서 무엇을 시킬지 적어 주세요 (보고서를 먼저 읽게 합니다)`
-              : `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기 · /compact · /clear)`
+            ? `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기 · /compact · /clear)`
             : "아래에서 plan 을 고르고, 무엇을 시킬지 적어 주세요"
         }
         spellCheck={false}
