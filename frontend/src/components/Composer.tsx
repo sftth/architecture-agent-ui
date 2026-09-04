@@ -31,8 +31,10 @@ export default function Composer({
   model,
   effort,
   onChangeModel,
-  handoff,
-  onClearHandoff,
+  compacted,
+  onCompact,
+  onClear,
+  canCompact,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -51,9 +53,14 @@ export default function Composer({
   model: string;
   effort: string;
   onChangeModel: (model: string, effort: string) => void;
-  /** 압축한 앞 세션의 인계 문서. 다음 지시문 뒤에 붙어 나간다. */
-  handoff?: string | null;
-  onClearHandoff?: () => void;
+  /** 압축으로 열린 새 세션 — 첫 지시문에 "보고서를 먼저 읽어라"가 붙는다. */
+  compacted?: boolean;
+  /** 세션 압축(/compact): 새 세션 + 보고서로 맥락 잇기. */
+  onCompact?: () => void;
+  /** clear(/clear): 새 세션. */
+  onClear?: () => void;
+  /** 압축할 세션이 있고 도는 중이 아닌가. */
+  canCompact?: boolean;
 }) {
   const [openMenu, setOpenMenu] = useState<"agent" | "model" | null>(null);
   // 끌어온 것이 여기 놓인다는 것을 테두리로 알린다. 놓기 전에는 알 방법이 없다.
@@ -153,7 +160,47 @@ export default function Composer({
         />
       )}
 
-      {/* 위: 입력칸. 늘 두 줄 이상의 넉넉한 자리다 — 한 줄 알약으로 줄였을 때는 글이
+      {/* 맨 위: 세션을 정리하는 두 아이콘. 압축은 새 세션에 "보고서를 먼저 읽어라"를 붙이고,
+          clear 는 아무것도 붙이지 않는다. 지시문을 적는 자리 바로 위에 두는 이유 — 무거워진
+          대화를 끊는 결정은 다음 말을 적기 직전에 내려진다. */}
+      <div className="composer-top">
+        {compacted && (
+          <span className="composer-compacted" title="첫 지시문 뒤에 '앞 세션을 압축했다. report/{project} 의 최신 보고서를 먼저 읽고 이어서 진행한다'가 붙습니다">
+            <CompactIcon />
+            압축됨 · 보고서로 이어서
+          </span>
+        )}
+        <span className="composer-grow" />
+        {onCompact && (
+          <button
+            type="button"
+            className="composer-tool"
+            onClick={onCompact}
+            disabled={!canCompact}
+            title={
+              "세션 압축 (/compact)\n새 세션을 열고, 첫 지시문에 앞 세션의 보고서를 먼저 읽으라고 붙인다. " +
+              "앞 세션과 지시문 이력은 세션 목록에 그대로 남는다." +
+              (canCompact ? "" : "\n\n압축할 세션이 없거나 도는 중이다.")
+            }
+            aria-label="세션 압축"
+          >
+            <CompactIcon />
+          </button>
+        )}
+        {onClear && (
+          <button
+            type="button"
+            className="composer-tool"
+            onClick={onClear}
+            title={"clear (/clear)\n빈 새 세션을 연다. 앞 세션은 세션 목록에 남는다."}
+            aria-label="clear — 새 세션"
+          >
+            <ClearIcon />
+          </button>
+        )}
+      </div>
+
+      {/* 입력칸. 늘 두 줄 이상의 넉넉한 자리다 — 한 줄 알약으로 줄였을 때는 글이
           들어갈 자리가 좁아 보여 적기 전부터 답답했다. 로그를 조금 더 가리는 대신
           "여기에 적으라"가 분명해진다. */}
       <textarea
@@ -197,29 +244,13 @@ export default function Composer({
         /* 자리가 넉넉하니 보내는 법을 한 문장으로 다 적는다 — 이 안내를 읽는 유일한 자리다. */
         placeholder={
           agent
-            ? handoff
-              ? `인계를 받은 새 세션 — @${agent.key} 에게 이어서 무엇을 시킬지 적어 주세요`
+            ? compacted
+              ? `압축한 새 세션 — @${agent.key} 에게 이어서 무엇을 시킬지 적어 주세요 (보고서를 먼저 읽게 합니다)`
               : `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기 · /compact · /clear)`
             : "아래에서 plan 을 고르고, 무엇을 시킬지 적어 주세요"
         }
         spellCheck={false}
       />
-
-      {/* 압축한 앞 세션의 인계 문서가 실려 있다. 보이지 않게 붙이면 왜 첫 턴이 무거운지
-          아무도 모른다 — 있다는 것과 크기를 말하고, 떼어 낼 길을 옆에 둔다. */}
-      {handoff && (
-        <div className="composer-handoff" title={handoff}>
-          <HandoffIcon />
-          <span className="composer-handoff-text">
-            앞 세션 인계 문서 첨부 · {handoff.length.toLocaleString()}자 — 다음 지시문 뒤에 붙어 나갑니다
-          </span>
-          {onClearHandoff && (
-            <button type="button" className="composer-handoff-x" onClick={onClearHandoff} aria-label="인계 문서 떼기" title="인계 문서 떼기">
-              ✕
-            </button>
-          )}
-        </div>
-      )}
 
       {/* 아래: 고르는 것과 보내는 것. 왼쪽이 "누구에게 · 무엇으로", 오른쪽이 "보내기". */}
       <div className="composer-bar">
@@ -278,11 +309,21 @@ export default function Composer({
   );
 }
 
-function HandoffIcon() {
+/* 압축 — 위아래에서 안으로 모이는 두 화살. 대화를 접는다는 뜻이다. */
+function CompactIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-      <path d="M4 2.5h5.5L12.5 5.5v8H4z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M9.5 2.5v3h3M6 8h4.5M6 10.5h4.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M8 1.5v4.5M5.8 4 8 6.2 10.2 4M8 14.5V10M5.8 12 8 9.8 10.2 12M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/* clear — 지우개. 판을 비우고 새로 시작한다. */
+function ClearIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M9.2 2.6 13.4 6.8 8 12.2H5.2L2.6 9.6z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M6.2 5.6 10.4 9.8M3.5 14h10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   );
 }

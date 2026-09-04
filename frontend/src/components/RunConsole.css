@@ -147,37 +147,7 @@
 .console-ctx--warn .console-ctx-bar > span { background: var(--signal-amber); }
 
 /* 게이지가 있으면 상태어는 그 옆에 붙는다. */
-.console-ctx + .console-compact,
 .console-ctx ~ .console-final { margin-left: 0; }
-
-.console-compact {
-  flex: none;
-  padding: 2px 9px;
-  background: none;
-  border: 1px solid var(--line-cyan-dim);
-  border-radius: 999px;
-  color: var(--paper-300);
-  font-family: var(--font-body);
-  font-size: var(--text-2xs);
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.console-compact:hover:not(:disabled) {
-  border-color: var(--line-cyan);
-  color: var(--paper-100);
-}
-
-.console-compact:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* 압축을 권하는 상태에서는 단추도 같은 색으로 말한다. */
-.console-ctx--warn + .console-compact {
-  border-color: var(--signal-amber-dim);
-  color: var(--signal-amber);
-}
 
 /* 상태어는 사람 말이라 본문 글꼴이다. mono 는 값·경로·명령에만 쓴다. */
 .console-final {
