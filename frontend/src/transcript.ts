@@ -32,6 +32,13 @@ function isNoise(kind: string): boolean {
 }
 
 
+/** 문맥 압축의 시작·끝 표시(system 이벤트의 subtype). */
+function isCompactMark(event: LogEvent): boolean {
+  if (event.kind !== "system") return false;
+  const subtype = field(event.data, "subtype");
+  return subtype === "compact_start" || subtype === "compact_end" || subtype === "compact_failed";
+}
+
 const META: Record<string, { label: string; cls: string }> = {
   system: { label: "SYS", cls: "line--system" },
   hook: { label: "HOOK", cls: "line--hook" },
@@ -165,6 +172,9 @@ export function toBlocks(events: LogEvent[]): Block[] {
   const byToolId = new Map<string, ToolCall>();
   // 직전 stderr 가 숨긴 알림이었나 — 그 본문(들여쓴 줄)도 함께 숨기기 위해.
   let muting = false;
+  // 압축 턴 안인가. 그 턴의 답(요약)은 CLI 가 스스로 압축할 때처럼 화면에 세우지 않는다 —
+  // 그것은 사람에게 하는 말이 아니라 다음 문맥에 넘기는 쪽지다.
+  let compacting = false;
 
   // 턴이 끝날 때, 그 턴의 마지막 말을 결과 보고로 승격한다. 승격에 쓸 실행 요약은
   // 그 턴의 이벤트만으로 만든다 — 세션 전체를 넘기면 앞 턴에 한 일까지 이번 결과로
@@ -188,7 +198,8 @@ export function toBlocks(events: LogEvent[]): Block[] {
   for (let index = 0; index < events.length; index++) {
     const event = events[index];
     const key = String(event.seq);
-    if (isNoise(event.kind)) continue;
+    // system 가운데 압축 표시만은 세운다 — 세션이 스스로 한 일 중 사람이 알아야 하는 것이다.
+    if (isNoise(event.kind) && !isCompactMark(event)) continue;
 
     if (event.kind === "tool_use") {
       const id = idOf(event.data, "id") ?? key;
@@ -223,6 +234,37 @@ export function toBlocks(events: LogEvent[]): Block[] {
         key,
         tool: { id: key, name: "결과", input: "", output: text, note: null, gist: "", failed: false },
       });
+      continue;
+    }
+
+    // 문맥 압축 — 시작·끝을 한 줄씩 세우고, 사이의 요약은 감춘다.
+    if (event.kind === "system") {
+      const subtype = field(event.data, "subtype");
+      if (subtype === "compact_start") {
+        if (index > turnStart) closeTurn(index);
+        turnStart = index;
+        compacting = true;
+        blocks.push({ kind: "meta", key, label: "압축", text: "대화를 압축하는 중…", cls: "line--compact" });
+        continue;
+      }
+      if (subtype === "compact_end" || subtype === "compact_failed") {
+        compacting = false;
+        const before = field(event.data, "before");
+        const size = typeof before === "number" ? ` · 이전 문맥 ${Math.round(before / 1000)}k 토큰` : "";
+        blocks.push({
+          kind: "meta",
+          key,
+          label: "압축",
+          text:
+            subtype === "compact_end"
+              ? `대화를 압축했습니다${size}. 다음 지시문부터 요약을 이어받은 새 문맥으로 진행합니다.`
+              : "대화를 압축하지 못했습니다 — 세션은 그대로입니다.",
+          cls: subtype === "compact_end" ? "line--compact" : "line--warn",
+        });
+        continue;
+      }
+    }
+    if (compacting && (event.kind === "assistant" || event.kind === "result" || event.kind === "thinking")) {
       continue;
     }
 

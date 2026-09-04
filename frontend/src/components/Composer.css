@@ -165,14 +165,51 @@
   cursor: default;
 }
 
-.composer-compacted {
+/* ── 문맥 게이지 ──────────────────────────────────────────
+   CLI 의 문맥 표시처럼 칸을 채운다. 평소엔 중립색으로 조용히, 60% 를 넘으면 amber,
+   압축 중엔 칸이 차례로 숨을 쉰다. */
+.composer-ctx {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   padding: 0 var(--space-1);
-  color: var(--line-cyan);
-  font-family: var(--font-body);
+  font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  color: var(--paper-500);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-ctx-cells {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.composer-ctx-cells i {
+  display: block;
+  width: 4px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--ink-800);
+  transition: background 0.3s ease;
+}
+
+.composer-ctx-cells i.on { background: var(--paper-500); }
+.composer-ctx--warn { color: var(--signal-amber); }
+.composer-ctx--warn .composer-ctx-cells i.on { background: var(--signal-amber); }
+
+.composer-ctx--busy { color: var(--line-cyan); }
+.composer-ctx--busy .composer-ctx-cells i {
+  animation: composer-ctx-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes composer-ctx-breathe {
+  0%, 100% { background: var(--ink-800); }
+  50% { background: var(--line-cyan); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-ctx--busy .composer-ctx-cells i { animation-duration: 2.4s; }
 }
 
 .composer-noproject {

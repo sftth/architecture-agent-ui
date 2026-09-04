@@ -12,11 +12,16 @@ import { LogEvent } from "./types";
  * 그 **마지막 것**의 입력 + 캐시 읽기 + 캐시 쓰기가 곧 그 호출의 문맥 크기다. `usage` 의
  * 합계는 턴 안의 호출을 전부 더한 것이라 문맥이 아니다 — iterations 가 없는 옛 로그에서만
  * 그 합계를 대신 쓰고 `exact: false` 로 표시한다. 한도는 `modelUsage[*].contextWindow`.
+ *
+ * 마지막 result 뒤에 압축(compact_end)이 있으면 문맥은 비워진 것이다 — 다음 턴이 요약을
+ * 첫 메시지로 삼은 새 대화로 열린다. 그때는 `used: 0` 에 `compacted.before` 로 직전 크기를 든다.
  */
 export interface ContextSize {
   used: number;
   limit: number;
   exact: boolean;
+  /** 방금 압축됐다. before 는 압축 직전 문맥(모르면 null). */
+  compacted?: { before: number | null };
 }
 
 const DEFAULT_LIMIT = 200_000;
@@ -33,22 +38,29 @@ function tokensOf(usage: Record<string, unknown>): number {
   );
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
 export function contextOf(events: LogEvent[]): ContextSize | null {
+  let compacted: { before: number | null } | undefined;
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
-    if (event.kind !== "result") continue;
-    const data = event.data;
-    if (!data || typeof data !== "object") continue;
-    const raw = data as Record<string, unknown>;
-    const usage = raw.usage;
-    if (!usage || typeof usage !== "object") continue;
-    const u = usage as Record<string, unknown>;
+    const raw = record(event.data);
+    if (event.kind === "system" && raw?.subtype === "compact_end" && !compacted) {
+      const before = raw.before;
+      compacted = { before: typeof before === "number" ? before : null };
+      continue;
+    }
+    if (event.kind !== "result" || !raw) continue;
+    const u = record(raw.usage);
+    if (!u) continue;
 
     let limit = DEFAULT_LIMIT;
-    const models = raw.modelUsage;
-    if (models && typeof models === "object") {
-      for (const entry of Object.values(models as Record<string, unknown>)) {
-        const window = entry && typeof entry === "object" ? num((entry as Record<string, unknown>).contextWindow) : 0;
+    const models = record(raw.modelUsage);
+    if (models) {
+      for (const entry of Object.values(models)) {
+        const window = num(record(entry)?.contextWindow);
         if (window > 0) {
           limit = window;
           break;
@@ -56,14 +68,13 @@ export function contextOf(events: LogEvent[]): ContextSize | null {
       }
     }
 
+    if (compacted) return { used: 0, limit, exact: true, compacted };
     const iterations = Array.isArray(u.iterations) ? u.iterations : [];
-    const last = iterations[iterations.length - 1];
-    if (last && typeof last === "object") {
-      return { used: tokensOf(last as Record<string, unknown>), limit, exact: true };
-    }
+    const last = record(iterations[iterations.length - 1]);
+    if (last) return { used: tokensOf(last), limit, exact: true };
     return { used: tokensOf(u), limit, exact: false };
   }
-  return null;
+  return compacted ? { used: 0, limit: DEFAULT_LIMIT, exact: true, compacted } : null;
 }
 
 /** 175k · 1.0M — 자리 수가 바뀌어도 폭이 크게 흔들리지 않게 짧게. */
