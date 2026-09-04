@@ -133,6 +133,48 @@
 }
 
 /* 프로젝트가 없을 때만 나온다 — 실행이 갈 곳이 없다는 뜻이라 amber 로 소리 낸다. */
+/* ── 맨 위 줄: 세션 정리 아이콘 ─────────────────────────
+   압축·clear 두 개. 조용히 오른쪽 끝에 서고, 압축된 새 세션이면 왼쪽에 그 사실을 적는다. */
+.composer-top {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+  margin: 0 0 2px;
+}
+
+.composer-tool {
+  flex: none;
+  display: inline-flex;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--paper-500);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.composer-tool:hover:not(:disabled) {
+  background: var(--ink-800);
+  color: var(--paper-100);
+}
+
+.composer-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.composer-compacted {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 var(--space-1);
+  color: var(--line-cyan);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+}
+
 .composer-noproject {
   flex: none;
   margin-left: var(--space-2);

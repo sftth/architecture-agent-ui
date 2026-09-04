@@ -47,11 +47,26 @@ import {
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
 import { activeSubAgents, planOf, registeredAgents } from "./harness";
 import { activityOf } from "./activity";
+import { contextOf } from "./context";
 import AgentSprites from "./sprites/AgentSprites";
 import "./App.css";
 
 /** run 이 없을 때 넘길 빈 목록. 매번 새로 만들면 콘솔의 memo 가 깨진다. */
 const EMPTY_EVENTS: LogEvent[] = [];
+
+/**
+ * 세션 압축 뒤 첫 지시문에 붙는 한 줄.
+ *
+ * CLI 내장 `/compact` 는 print 모드(`claude -p`)에서 처리되지 않는다 — 실제로 보내 보면 모델이
+ * 그 글자를 경로로 읽고 "이 경로로 무엇을 할까요"라고 되묻는다(2026-09-04 확인). 그래서 압축은
+ * **새 세션**이고, 맥락은 agent 가 남긴 보고서(report/{project})가 잇는다. 인계 문서를 따로 만들지
+ * 않는다 — 보고서가 이미 그 역할이다. 이 줄은 새 세션의 agent 에게 그 보고서를 먼저 읽으라고
+ * 말하는 것뿐이다.
+ */
+function compactNote(project: string): string {
+  const where = project ? `report/${project}` : "report/";
+  return `[앞 세션을 압축했다. ${where} 의 최신 보고서를 먼저 읽고, 거기 적힌 일은 되풀이하지 말고 이어서 진행한다]`;
+}
 
 export default function App() {
   // undefined: 세션 확인 중 / null: 로그아웃 상태
@@ -86,6 +101,8 @@ export default function App() {
   const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
   // sub-agent 를 다시 읽게 하려고 다시 열기로 한 run. 도는 중이면 멈춘 뒤에 잇는다.
   const [relaunchId, setRelaunchId] = useState<string | null>(null);
+  // 압축으로 열린 새 세션인가. 참이면 첫 지시문에 "보고서를 먼저 읽어라" 한 줄이 붙고 꺼진다.
+  const [compacted, setCompacted] = useState(false);
   const side = useSideWidth();
   const closeSocketRef = useRef<() => void>();
   // 소켓에서 온 이벤트를 한 프레임 동안 모아 두는 자리.
@@ -242,7 +259,19 @@ export default function App() {
   }
 
   async function handleRun() {
-    if (!agentKey || !prompt.trim()) return;
+    const text = prompt.trim();
+    // 슬래시 명령은 CLI 로 보내지 않는다 — 이 화면의 동작이다.
+    if (/^\/clear\b/i.test(text)) {
+      setPrompt("");
+      handleClear();
+      return;
+    }
+    if (/^\/compact\b/i.test(text)) {
+      setPrompt("");
+      handleCompact();
+      return;
+    }
+    if (!agentKey || !text) return;
     // 프로젝트를 안 고르면 에이전트가 되묻다 끝나므로, 보내기 전에 붙잡는다.
     if (!project) {
       setGateOpen(true);
@@ -284,15 +313,19 @@ ${text}` : text));
     // 보고 있는 세션이 있으면 그 세션에 이어서 묻는다. 전에는 늘 새로 만들어서, 이력에서
     // 세션을 골라 물어도 그 옆에 새 세션이 하나 더 생겼다.
     const held = activeRunId && activeRun && activeRun.status !== "running" ? activeRunId : null;
+    // 압축 뒤 첫 지시문에는 보고서를 먼저 읽으라는 한 줄이 **뒤에** 붙는다 — 제목은 지시문
+    // 첫 줄에서 오므로 사람이 적은 말이 앞에 서야 한다.
+    const text = !held && compacted ? `${prompt.trim()}\n\n${compactNote(withProject)}` : prompt;
     try {
       const run = held
-        ? await continueRun(held, prompt, agentKey, withProject, model, effort)
-        : await createRun(agentKey, prompt, withProject, model, effort);
+        ? await continueRun(held, text, agentKey, withProject, model, effort)
+        : await createRun(agentKey, text, withProject, model, effort);
       setRunsById((prev) => ({ ...prev, [run.id]: run }));
       setActiveRunId(run.id);
       // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
       connect(run.id);
       setPrompt("");
+      if (!held) setCompacted(false);
     } catch (err) {
       // 여기가 비어 있었다. 보내기가 실패하면 화면에서는 아무 일도 안 일어난 것과
       // 구별되지 않아, 무엇이 잘못됐는지 알 길이 없었다. 쓰던 지시문은 지우지 않는다.
@@ -326,6 +359,28 @@ ${text}` : text));
     } catch (err) {
       setSendError(`${failNote} — ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * 세션 압축 — 새 세션을 열되, 첫 지시문에 "보고서를 먼저 읽어라"를 붙인다.
+   *
+   * 무거워진 대화를 끊는 것은 clear 와 같다. 다른 점은 하나 — 맥락을 agent 의 보고서로 잇는다는
+   * 것을 새 세션에 말해 준다. 인계 문서를 따로 만들지 않는다(compactNote 참조).
+   * 앞 세션은 지우지 않는다 — 지시문 이력은 세션 목록에 그대로 있고, 언제든 다시 열 수 있다.
+   */
+  function handleCompact() {
+    if (activeRun?.status === "running") {
+      setSendError("도는 중에는 압축할 수 없습니다 — 끝나거나 멈춘 뒤에 다시 시도하세요.");
+      return;
+    }
+    handleNewSession();
+    setCompacted(true);
+  }
+
+  /** clear — 새 세션. 아무것도 붙이지 않는다. */
+  function handleClear() {
+    handleNewSession();
+    setCompacted(false);
   }
 
   /** 사람이 직접 화면을 옮겼다 — 보려던 자리를 도는 run 이 도로 뺏어가지 않게 한다. */
@@ -445,6 +500,8 @@ ${text}` : text));
     () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
+  // 이 세션의 문맥 크기 — 마지막 API 호출의 입력. 끝난 턴이 하나는 있어야 값이 있다.
+  const context = useMemo(() => (activeRun ? contextOf(activeEvents) : null), [activeRun, activeEvents]);
   // 지금 하는 일 — 콘솔 하단 줄과 같은 값. 하네스의 plan 이 위임을 걸고 기다리는지 여기서 안다.
   const activity = useMemo(
     () => (activeRun?.status === "running" ? activityOf(activeEvents, allAgentKeys) : null),
@@ -654,6 +711,7 @@ ${text}` : text));
             onNewSession={handleNewSession}
             onAnswer={handleAnswer}
             agentKeys={allAgentKeys}
+            context={context}
           />
           {sendError && (
             <div className="send-error" role="alert">
@@ -684,6 +742,10 @@ ${text}` : text));
               setModel(nextModel);
               setEffort(nextEffort);
             }}
+            compacted={compacted}
+            onCompact={handleCompact}
+            onClear={handleClear}
+            canCompact={Boolean(activeRun) && activeRun?.status !== "running"}
           />
 
           {sessionsOpen && (

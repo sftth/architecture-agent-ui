@@ -112,6 +112,43 @@
   color: var(--paper-500);
 }
 
+/* ── 문맥 게이지 ──────────────────────────────────────────
+   짧은 막대 + "문맥 175k / 1.0M". 평소엔 중립색으로 조용히, 60% 를 넘으면 amber. */
+.console-ctx {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--paper-500);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-ctx-bar {
+  display: inline-block;
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-800);
+  overflow: hidden;
+}
+
+.console-ctx-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--paper-500);
+  transition: width 0.3s ease;
+}
+
+.console-ctx--warn { color: var(--signal-amber); }
+.console-ctx--warn .console-ctx-bar > span { background: var(--signal-amber); }
+
+/* 게이지가 있으면 상태어는 그 옆에 붙는다. */
+.console-ctx ~ .console-final { margin-left: 0; }
+
 /* 상태어는 사람 말이라 본문 글꼴이다. mono 는 값·경로·명령에만 쓴다. */
 .console-final {
   margin-left: auto;

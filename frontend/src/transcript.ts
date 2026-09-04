@@ -48,6 +48,17 @@ const META: Record<string, { label: string; cls: string }> = {
  */
 const WARNING = /^\s*⚠|^rate limit: allowed_warning/;
 
+/**
+ * 보이지 않아도 되는 stderr. 프로세스가 뜰 때마다 같은 말을 되풀이하고, 사람이 여기서
+ * 할 수 있는 일이 없는 것들.
+ *
+ * - Sandbox disabled: 조직 관리 설정이 sandbox 를 켜 두었는데 Windows 에는 그 기능이
+ *   없어(feature gate off) CLI 가 매번 알린다. 이 저장소의 실행에는 영향이 없고, 사용자가
+ *   끌 수 있는 설정도 아니다. 턴마다 콘솔 맨 위에 WARN 으로 찍혀 진짜 경고를 묻었다.
+ * - stdin 3초 대기 안내: `-p` 로 띄우면서 stdin 을 안 주어 나오는 말. 우리 쪽 호출 방식이다.
+ */
+const MUTED = /^\s*⚠\s*Sandbox disabled|^Warning: no stdin data received/;
+
 /** 앞 줄에 딸린 줄 — 들여쓰기로 시작한다. CLI 가 경고 본문을 이렇게 이어 낸다. */
 const CONTINUATION = /^\s{2,}\S/;
 
@@ -152,6 +163,8 @@ function noteOf(data: unknown): string | null {
 export function toBlocks(events: LogEvent[]): Block[] {
   const blocks: Block[] = [];
   const byToolId = new Map<string, ToolCall>();
+  // 직전 stderr 가 숨긴 알림이었나 — 그 본문(들여쓴 줄)도 함께 숨기기 위해.
+  let muting = false;
 
   // 턴이 끝날 때, 그 턴의 마지막 말을 결과 보고로 승격한다. 승격에 쓸 실행 요약은
   // 그 턴의 이벤트만으로 만든다 — 세션 전체를 넘기면 앞 턴에 한 일까지 이번 결과로
@@ -248,6 +261,13 @@ export function toBlocks(events: LogEvent[]): Block[] {
 
     if (event.kind === "stderr") {
       const text = event.text ?? "";
+      // 되풀이되는 무해한 알림은 본문(들여쓴 이어지는 줄)까지 통째로 넘긴다.
+      if (MUTED.test(text)) {
+        muting = true;
+        continue;
+      }
+      if (muting && CONTINUATION.test(text)) continue;
+      muting = false;
       const prev = blocks[blocks.length - 1];
       // 들여쓴 줄은 앞 경고·오류의 본문이다. 따로 세우면 ERR 이 두 번 찍힌 것처럼 보인다.
       if (
