@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Agent minime — 직원 사무실 미리보기</title>
+<style>
+  /* ── architecture-agent-ui tokens (발췌) ─────────────────────── */
+  :root{
+    --ink-950:#0a1218;--ink-900:#0e1a22;--ink-850:#12222c;--ink-800:#172c38;
+    --tick-quiet:#162934;--line-cyan:#4a8fa8;--line-cyan-dim:#1f3746;
+    --paper-100:#e7eff3;--paper-300:#b4c6d0;--paper-500:#7a919e;
+    --signal-amber:#f2a65a;--signal-amber-dim:#7a5a34;--gate-mint:#59c9a5;--gate-mint-dim:#2f5f4f;--gate-rose:#e1667c;
+    --role-plan:#6fd08c;--role-plan-dim:#2c5c3c;--role-impl:#5ba7c4;--role-impl-dim:#234c5e;--role-eval:#9b8cf0;--role-eval-dim:#3d3570;
+    --font-body:"Segoe UI","Malgun Gothic",system-ui,sans-serif;--font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  [data-theme="light"]{
+    --ink-950:#e8edf0;--ink-900:#f7fafb;--ink-850:#ffffff;--ink-800:#eef3f6;--tick-quiet:#d3dee4;
+    --line-cyan:#2f6a86;--line-cyan-dim:#c7d8e0;--paper-100:#12212b;--paper-300:#3b5364;--paper-500:#5e7787;
+    --role-plan:#2f7d4a;--role-plan-dim:#b9dcc6;--role-impl:#2f6a86;--role-impl-dim:#c0d8e3;--role-eval:#5a49b8;--role-eval-dim:#cdc6ee;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink-950);color:var(--paper-300);font:13px/1.6 var(--font-body);padding:24px}
+  h2{font:600 12px/1 var(--font-body);letter-spacing:.06em;text-transform:uppercase;color:var(--paper-500);margin:28px 0 10px}
+  p{margin:0 0 8px;max-width:80ch}
+
+  /* ── 하네스 판 (HarnessStrip.css 와 같은 뼈대) ─────────────────── */
+  .harness{background:var(--ink-900);border:1px solid var(--line-cyan-dim);border-radius:5px;padding:12px 16px 16px;max-width:960px}
+  .harness-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .harness-number{display:inline-grid;place-items:center;width:29px;height:29px;border:1px solid var(--role-plan);border-radius:50%;color:var(--role-plan);font:11.5px var(--font-mono)}
+  .harness-eyebrow{display:block;color:var(--paper-500);font:600 11.5px var(--font-mono);letter-spacing:.08em}
+  .harness-stage{margin:0;font:600 18px var(--font-body);color:var(--paper-100)}
+
+  .office{display:grid;border-top:1px solid var(--line-cyan-dim);height:150px}
+  .dept{min-width:0;padding:10px 12px 0;border-left:1px solid var(--tick-quiet);display:flex;flex-direction:column}
+  .dept:first-child{border-left:0}
+  .dept-title{display:flex;gap:6px;align-items:center;font:600 12px var(--font-mono);color:var(--paper-500);padding-bottom:4px}
+  .dept-title span{font-weight:400;font-size:11.5px;color:var(--line-cyan-dim)}
+  .dept--plan .dept-title{color:var(--role-plan)} .dept--impl .dept-title{color:var(--role-impl)}
+  .dept--eval .dept-title{color:var(--role-eval)} .dept--common .dept-title{color:var(--line-cyan)}
+  /* 바닥선 — 직원들이 이 선 위에 선다. */
+  .floor{flex:1;display:flex;align-items:flex-end;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+         background:linear-gradient(to top,var(--tick-quiet) 0 1px,transparent 1px) no-repeat 0 calc(100% - 30px)/100% 100%}
+  .floor::-webkit-scrollbar{display:none}
+  .floor-empty{color:var(--line-cyan-dim);font:12px var(--font-mono);padding-bottom:36px}
+
+  /* ── 직원 슬롯 ─────────────────────────────────────────────── */
+  .emp{flex:none;width:64px;display:flex;flex-direction:column;align-items:center;border:0;background:none;padding:0 0 2px;color:inherit;cursor:default;position:relative}
+  button.emp{cursor:pointer}
+  .emp-sprite{position:relative;width:32px;height:48px}
+  .emp-sprite svg{position:absolute;inset:0;width:32px;height:48px;display:block}
+  /* 프레임 애니 — 겹친 svg 를 steps(1) 로 돌린다 */
+  .emp-sprite.f2 svg{opacity:0;animation:cyc2 .8s steps(1) infinite} .emp-sprite.f2 svg:nth-child(2){animation-delay:-.4s}
+  .emp-sprite.f4 svg{opacity:0;animation:cyc4 .48s steps(1) infinite}
+  .emp-sprite.f4 svg:nth-child(2){animation-delay:-.12s}.emp-sprite.f4 svg:nth-child(3){animation-delay:-.24s}.emp-sprite.f4 svg:nth-child(4){animation-delay:-.36s}
+  @keyframes cyc2{0%,49.99%{opacity:1}50%,100%{opacity:0}}
+  @keyframes cyc4{0%,24.99%{opacity:1}25%,100%{opacity:0}}
+  .emp--run .emp-sprite{animation:lean .48s steps(2) infinite}
+  @keyframes lean{0%{transform:translateX(-1px)}50%{transform:translateX(1px)}}
+  .emp--muted .emp-sprite{filter:saturate(.55);opacity:.85}
+  .emp--ghost .emp-sprite{filter:grayscale(1);opacity:.4}
+  /* 발밑 받침 — 고른 것·도는 것 */
+  .emp--selected::after{content:"";position:absolute;left:14px;right:14px;bottom:30px;height:2px;border-radius:1px;background:var(--line-cyan)}
+  .emp--live::after{content:"";position:absolute;left:14px;right:14px;bottom:30px;height:2px;border-radius:1px;background:var(--signal-amber)}
+
+  /* 명패 — 두 줄까지. 줄마다 최대 9자, 넘치면 …  */
+  .emp-name{margin-top:3px;height:26px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font:11px/1.2 var(--font-mono);color:var(--paper-500);text-align:center}
+  .emp-name i{display:block;max-width:64px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-style:normal}
+  .emp--live .emp-name,.emp--selected .emp-name{color:var(--paper-100)}
+  .emp--live .emp-name{font-weight:600}
+
+  /* ── 팔레트: 역할은 셔츠, 나머지는 사람마다 ─────────────────── */
+  .role-plan  {--shirt:var(--role-plan);  --arm:var(--role-plan-dim);  --zip:color-mix(in srgb,var(--role-plan) 65%,white)}
+  .role-impl  {--shirt:var(--role-impl);  --arm:var(--role-impl-dim);  --zip:color-mix(in srgb,var(--role-impl) 65%,white)}
+  .role-eval  {--shirt:var(--role-eval);  --arm:var(--role-eval-dim);  --zip:color-mix(in srgb,var(--role-eval) 65%,white)}
+  .role-common{--shirt:var(--line-cyan);  --arm:var(--line-cyan-dim);  --zip:color-mix(in srgb,var(--line-cyan) 65%,white)}
+  [data-theme="light"] .emp{--collar:#c9d5e1;--gear:#5b6b8f}
+
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+  .cell{background:var(--ink-900);border:1px solid var(--line-cyan-dim);border-radius:5px;padding:10px 8px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:84px}
+  .cell span{font:11px var(--font-mono);color:var(--paper-500)}
+  .toggle{position:fixed;top:12px;right:16px;font:12px var(--font-body);color:var(--paper-500);background:var(--ink-900);border:1px solid var(--line-cyan-dim);border-radius:3px;padding:4px 10px;cursor:pointer}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">테마 전환</button>
+
+<!-- ── 스프라이트 시트: 원본 킷 + 확장 파츠 ───────────────────────────── -->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <!-- 머리 5종. 사람마다 hash 로 고른다. -->
+  <g id="h-short" shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v1h-1zM12 5h1v1h-1z"/></g>
+  <g id="h-bob"   shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v4h-1zM12 5h1v4h-1z"/></g>
+  <g id="h-long"  shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 0h6v1h-6zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h3v1h-3zM10 4h3v1h-3zM3 5h1v7h-1zM12 5h1v7h-1z"/></g>
+  <g id="h-spiky" shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M4 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM4 1h8v1h-8zM3 2h10v2h-10zM3 4h1v1h-1zM12 4h1v1h-1z"/></g>
+  <g id="h-buzz"  shape-rendering="crispEdges"><path fill="var(--hair,#4A2E1C)" d="M5 1h6v1h-6zM4 2h8v2h-8zM4 4h1v1h-1zM11 4h1v1h-1z"/></g>
+
+  <g id="m-head-skin" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M6 4h4v1h-4zM4 5h8v4h-8zM5 9h6v1h-6z"/><path fill="var(--blush,#F28C8C)" opacity=".7" d="M4 8h1v1h-1zM11 8h1v1h-1z"/></g>
+  <g id="m-neck-hands" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2zM3 17h1v1h-1zM12 17h1v1h-1z"/></g>
+  <g id="m-neck" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M7 10h2v1h-2z"/></g>
+  <!-- 타이핑 손 2프레임 — 노트북 위에서 위아래로 -->
+  <g id="m-hands-type-a" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M4 16h1v1h-1zM11 16h1v1h-1z"/></g>
+  <g id="m-hands-type-b" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M4 15h1v1h-1zM11 15h1v1h-1z"/></g>
+  <!-- 놀란 손 — 양손을 번쩍 -->
+  <g id="m-hands-up" shape-rendering="crispEdges"><path fill="var(--skin,#F5CBA7)" d="M2 11h1v1h-1zM13 11h1v1h-1z"/><path fill="var(--arm,#2E63BF)" d="M2 12h1v1h-1zM13 12h1v1h-1z"/></g>
+
+  <g id="m-body" shape-rendering="crispEdges">
+    <path fill="var(--shirt,#3D7BE0)" d="M4 11h8v1h-8zM3 12h10v5h-10z"/>
+    <path fill="var(--arm,#2E63BF)" d="M3 13h1v4h-1zM12 13h1v4h-1z"/>
+    <path fill="var(--zip,#6FA0F0)" d="M7 12h2v5h-2z"/>
+    <path fill="var(--collar,#E9EEF6)" d="M6 11h4v1h-4z"/>
+    <path fill="var(--accent,#7FE0D8)" d="M5 13h1v1h-1z"/>
+  </g>
+  <g id="m-legs-stand" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM4 18h3v2h-3zM9 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M3 20h4v1h-4zM9 20h4v1h-4z"/></g>
+  <g id="m-legs-a" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM3 18h3v2h-3zM9 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M2 20h4v1h-4zM9 20h4v1h-4z"/></g>
+  <g id="m-legs-b" shape-rendering="crispEdges"><path fill="var(--pants,#2B3A5C)" d="M4 17h8v1h-8zM4 18h3v2h-3zM10 18h3v2h-3z"/><path fill="var(--shoe,#1F2A44)" d="M3 20h4v1h-4zM10 20h4v1h-4z"/></g>
+
+  <!-- 표정 -->
+  <g id="f-idle"     shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 6h1v2h-1zM10 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v1h-2z"/></g>
+  <g id="f-look"     shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M6 6h1v2h-1zM11 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M8 8h2v1h-2z"/></g>
+  <g id="f-happy"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 7h1v1h-1zM5 6h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM10 6h1v1h-1zM11 7h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M6 8h1v1h-1zM7 9h2v1h-2zM9 8h1v1h-1z"/></g>
+  <g id="f-think"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 6h1v1h-1zM10 6h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h1v1h-1z"/></g>
+  <g id="f-error"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 5h2v1h-2zM10 5h2v1h-2zM5 6h1v2h-1zM10 6h1v2h-1z"/><path fill="var(--mouth,#B85C50)" d="M6 9h1v1h-1zM7 8h2v1h-2zM9 9h1v1h-1z"/></g>
+  <g id="f-sleep"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 7h3v1h-3zM9 7h3v1h-3z"/><path fill="var(--mouth,#B85C50)" d="M7 8h1v1h-1z"/></g>
+  <g id="f-surprise" shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 6h2v2h-2zM10 6h2v2h-2z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v2h-2z"/></g>
+  <g id="f-focus"    shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M5 7h1v1h-1zM10 7h1v1h-1z"/><path fill="var(--mouth,#B85C50)" d="M7 8h2v1h-2z"/></g>
+
+  <!-- 소품. 색은 우리 토큰으로 바꿨다(원본은 하드코딩). -->
+  <g id="p-headset" shape-rendering="crispEdges"><path fill="var(--gear,#3B4A6B)" d="M2 2h12v1h-12zM2 3h1v3h-1zM13 3h1v3h-1zM2 6h2v3h-2zM12 6h2v3h-2zM12 9h1v1h-1zM11 10h1v1h-1z"/><path fill="var(--accent,#7FE0D8)" d="M2 7h1v1h-1zM13 7h1v1h-1zM10 10h1v1h-1z"/></g>
+  <g id="p-glasses" shape-rendering="crispEdges"><path fill="var(--eye,#1F2A44)" d="M4 6h1v2h-1zM6 6h4v1h-4zM6 7h1v1h-1zM9 7h1v1h-1zM11 6h1v2h-1z"/><path fill="#BFE3FF" opacity=".45" d="M5 6h1v2h-1zM10 6h1v2h-1z"/></g>
+  <g id="p-laptop"  shape-rendering="crispEdges"><path fill="var(--gear,#3B4A6B)" d="M5 13h6v3h-6z"/><path fill="var(--accent,#7FE0D8)" d="M6 13h4v2h-4z"/><path fill="#5B6B8F" d="M4 16h8v1h-8z"/></g>
+  <g id="p-mug"     shape-rendering="crispEdges"><path fill="var(--paper-100,#E9EEF6)" d="M12 15h2v2h-2z"/><path fill="var(--gear,#3B4A6B)" d="M14 15h1v1h-1z"/><path fill="var(--paper-500,#8A98B8)" opacity=".7" d="M12 13h1v1h-1zM13 12h1v1h-1z"/></g>
+  <g id="p-bubble"  shape-rendering="crispEdges"><path fill="var(--paper-500,#C5CEDF)" d="M9 0h7v1h-7zM9 2h7v1h-7zM9 1h1v1h-1zM15 1h1v1h-1zM10 3h1v1h-1z"/><path fill="var(--ink-800,#FFFFFF)" d="M10 1h5v1h-5z"/><path fill="var(--paper-300,#8A98B8)" d="M10 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1z"/></g>
+  <g id="p-spark"   shape-rendering="crispEdges"><path fill="var(--gate-mint,#2E9E6E)" d="M13 0h1v1h-1zM12 1h3v1h-3zM13 2h1v1h-1z"/></g>
+  <g id="p-alert"   shape-rendering="crispEdges"><path fill="var(--gate-rose,#E06B5A)" d="M13 0h1v2h-1zM13 3h1v1h-1z"/></g>
+  <g id="p-bang"    shape-rendering="crispEdges"><path fill="var(--signal-amber,#F2A65A)" d="M13 0h1v2h-1zM13 3h1v1h-1z"/></g>
+  <g id="p-zzz"     shape-rendering="crispEdges"><path fill="var(--paper-500,#8A98B8)" d="M12 0h3v1h-3zM13 1h1v1h-1zM12 2h3v1h-3z"/></g>
+</defs>
+</svg>
+
+<h2>1. 하네스 판 — 운영 스테이지 (스크린샷과 같은 데이터)</h2>
+<p>레인이 부서가 되고, 줄 대신 직원이 바닥선 위에 선다. 셔츠 = 부서색, 얼굴·머리는 사람마다 다르다(이름 hash 로 고정). 명패는 스테이지 공통 접두어와 역할 꼬리를 뗀 "부서 안에서 부르는 이름".</p>
+<section class="harness" id="board-operation"></section>
+
+<h2>2. 같은 판 — cicd 스테이지 (impl 8 · eval 8, 가장 붐비는 곳)</h2>
+<p>레인 폭을 인원에 비례시켜 Impl·Eval 이 넓어진다. 넘치면 그 레인만 가로 스크롤. 도는 직원은 자동으로 시야에 들어온다(구현 시).</p>
+<section class="harness" id="board-cicd"></section>
+
+<h2>3. 상태 — 한 사람이 겪는 순서</h2>
+<p>빈둥(대기) → 말풍선/커피/졸기(대기 비트, 판 전체에서 한 번에 한 명만) → <b>!</b> 놀람 → 달리기 → 타이핑 → 성공 스파크 → 다시 대기. 실패는 다음 지시까지 남는다.</p>
+<div class="row" id="states"></div>
+
+<h2>4. 외형 조합 — 같은 부서 12명</h2>
+<p>머리 5종 × 머리색 6 × 피부 4 × 소품 3(없음·안경·헤드셋). 셔츠는 부서색으로 고정이라 여럿이 서도 "같은 팀"으로 읽힌다.</p>
+<div class="row" id="variety"></div>
+
+<script>
+// ── 결정적 hash — 같은 이름은 늘 같은 얼굴 ────────────────────────
+function fnv(s){let h=0x811c9dc5;for(const c of s){h^=c.charCodeAt(0);h=Math.imul(h,0x01000193)>>>0}return h}
+const HAIR=["h-short","h-bob","h-long","h-spiky","h-buzz"];
+const HAIR_COLOR=["#4A2E1C","#1F1F2E","#E3B341","#B85C50","#8A98B8","#2E2A4A"];
+const SKIN=["#F5CBA7","#E8B88E","#C68642","#8D5524"];
+const ACC=[null,"p-glasses","p-headset"];
+function look(key){const h=fnv(key);return{hair:HAIR[h%5],hairColor:HAIR_COLOR[(h>>>3)%6],skin:SKIN[(h>>>6)%4],acc:ACC[(h>>>9)%3]}}
+
+// ── 명패: 스테이지 공통 접두어 + 역할 꼬리 제거, 하이픈에서 두 줄 ──
+// 규칙: 스테이지(또는 공통) 카탈로그 이름들에서 역할 꼬리를 뗀 뒤, 모두가 공유하는
+// 첫 단어 접두어를 뗀다. 접두어만 남는 이름(cicd-plan → "")은 그 접두어를 이름으로 쓴다.
+// 카탈로그 밖 이름(general-purpose)은 접두어 계산에서 빼고 하이픈에서 그대로 나눈다.
+function givenName(key,catalogKeys){
+  const strip=k=>k.replace(/-(plan|impl|eval)$/,"");
+  const base=strip(key);
+  const words=catalogKeys.map(strip).map(k=>k.split("-"));
+  const inCatalog=catalogKeys.includes(key);
+  let n=0;
+  if(inCatalog&&words.length>1){
+    // 첫 단어가 모두 같으면 접두어. 한 단어짜리(cicd-plan → "cicd")는 접두어 자체라 판정에서 빼지 않고 같다고 본다.
+    while(words.every(w=>(w[n]??words[0][n])===words[0][n])&&words.some(w=>w.length>n+1))n++;
+  }
+  const rest=base.split("-").slice(n);
+  const parts=rest.length?rest:[base.split("-")[n-1]??base];
+  return parts.length<=2?parts:[parts[0],parts.slice(1).join("-")];
+}
+if(location.search.includes("light"))document.documentElement.dataset.theme="light";
+
+// ── 프레임 조립 ──────────────────────────────────────────────────
+function frame(lk,role,{legs="m-legs-stand",face="f-idle",hands="m-neck-hands",props=[],dy=0,top=[]}={}){
+  const use=id=>`<use href="#${id}"/>`;
+  return `<svg viewBox="0 0 16 24" class="role-${role}" style="--hair:${lk.hairColor};--skin:${lk.skin}">
+    <g transform="translate(0,${3+dy})">${use(lk.hair)}${use("m-head-skin")}${use(hands)}${use("m-body")}${use(legs)}${use(face)}${lk.acc?use(lk.acc):""}${props.map(use).join("")}</g>
+    ${top.map(use).join("")}</svg>`;
+}
+const STATES={
+  idle:     (l,r)=>[frame(l,r)],
+  chat:     (l,r)=>[frame(l,r,{face:"f-look",top:["p-bubble"]})],
+  coffee:   (l,r)=>[frame(l,r,{hands:"m-neck",props:["p-mug"]})],
+  breathe:  (l,r)=>[frame(l,r),frame(l,r,{dy:1})],
+  doze:     (l,r)=>[frame(l,r,{face:"f-sleep",top:["p-zzz"]})],
+  surprise: (l,r)=>[frame(l,r,{face:"f-surprise",hands:"m-hands-up",top:["p-bang"]})],
+  run:      (l,r)=>[frame(l,r,{legs:"m-legs-a"}),frame(l,r,{dy:-1}),frame(l,r,{legs:"m-legs-b"}),frame(l,r,{dy:-1})],
+  typing:   (l,r)=>[frame(l,r,{face:"f-focus",hands:"m-hands-type-a",props:["p-laptop"]}),frame(l,r,{face:"f-focus",hands:"m-hands-type-b",props:["p-laptop"]})],
+  thinking: (l,r)=>[frame(l,r,{face:"f-think",top:["p-bubble"]})],
+  success:  (l,r)=>[frame(l,r,{face:"f-happy",top:["p-spark"]})],
+  error:    (l,r)=>[frame(l,r,{face:"f-error",top:["p-alert"]})],
+  ghost:    (l,r)=>[frame(l,r)],
+};
+function sprite(key,role,state){
+  const f=STATES[state](look(key),role);
+  return `<span class="emp-sprite${f.length===2?" f2":f.length===4?" f4":""}">${f.join("")}</span>`;
+}
+function emp(key,role,state,name,{selected=false,live=false,muted=false,ghost=false}={}){
+  const cls=["emp",`emp--${state}`,selected&&"emp--selected",live&&"emp--live",muted&&"emp--muted",ghost&&"emp--ghost"].filter(Boolean).join(" ");
+  return `<button class="${cls}" title="${key}">${sprite(key,role,state)}<span class="emp-name">${name.map(n=>`<i>${n}</i>`).join("")}</span></button>`;
+}
+
+// ── 판 ───────────────────────────────────────────────────────────
+function board(el,stageTitle,lanes,liveKeys=[],selected=""){
+  const all=lanes.flatMap(l=>l.role==="common"?[]:l.agents);
+  const cols=lanes.map(l=>Math.max(1,Math.min(l.agents.length,3))+"fr").join(" ");
+  el.innerHTML=`<header class="harness-head"><span class="harness-number">01</span><div><span class="harness-eyebrow">AGENT HARNESS</span><h3 class="harness-stage">${stageTitle}</h3></div></header>
+  <div class="office" style="grid-template-columns:${cols}">${lanes.map(l=>`
+    <section class="dept dept--${l.role}"><div class="dept-title">${l.label}<span>${l.agents.length}</span></div>
+      <div class="floor">${l.agents.length?l.agents.map(a=>{
+        const live=liveKeys.includes(a.key);
+        const ghost=a.ghost; const st=a.state||(live?"typing":"idle");
+        const catalog=(l.role==="common"?l.agents.filter(x=>!x.outside):all).map(x=>x.key);
+        return emp(a.key,l.role,st,givenName(a.key,catalog),{selected:a.key===selected,live,muted:!live&&!ghost&&st==="idle",ghost});
+      }).join(""):`<span class="floor-empty">—</span>`}</div></section>`).join("")}</div>`;
+}
+const A=(k,o={})=>({key:k,...o});
+board(document.getElementById("board-operation"),"운영",[
+  {role:"plan",label:"Plan/",agents:[A("middleware-status-plan",{state:"thinking"})]},
+  {role:"impl",label:"Impl/",agents:[A("middleware-remediate-impl",{state:"chat"}),A("middleware-status-impl")]},
+  {role:"eval",label:"Eval/",agents:[]},
+  {role:"common",label:"Comm/",agents:[A("common-doc-impl"),A("common-html-report-impl",{ghost:true}),A("common-wiki-impl",{state:"coffee"})]},
+],["middleware-status-impl"],"middleware-status-plan");
+
+board(document.getElementById("board-cicd"),"CI/CD",[
+  {role:"plan",label:"Plan/",agents:[A("cicd-plan")]},
+  {role:"impl",label:"Impl/",agents:["argocd","gitlab","jenkins","jenkins-pipeline","nexus","nexus-migrate","sonarqube","sonarqube-migrate"].map(n=>A(`cicd-${n}-impl`,n==="nexus"?{state:"surprise"}:n==="jenkins"?{state:"doze"}:{}))},
+  {role:"eval",label:"Eval/",agents:["argocd","gitlab","jenkins","jenkins-pipeline","nexus","nexus-migrate","sonarqube","sonarqube-migrate"].map(n=>A(`cicd-${n}-eval`,n==="gitlab"?{state:"error"}:{}))},
+  {role:"common",label:"Comm/",agents:[A("common-doc-impl"),A("common-html-report-impl"),A("common-wiki-impl"),A("general-purpose",{state:"run",outside:true})]},
+],["cicd-gitlab-impl","cicd-nexus-impl","general-purpose"],"cicd-plan");
+
+// 상태 순서
+const seq=[["idle","대기(muted)"],["breathe","대기 비트 · 숨"],["chat","대기 비트 · 잡담"],["coffee","대기 비트 · 커피"],["doze","오래 놀면 · 졸기"],["surprise","지시 받음 · 놀람 0.6s"],["run","달리기 0.9s"],["typing","일하는 중"],["thinking","plan · 위임 대기"],["success","성공 · 0.9s 후 대기"],["error","실패 · 남는다"],["ghost","세션 미등록"]];
+document.getElementById("states").innerHTML=seq.map(([s,label])=>`<div class="cell">${emp("cicd-jenkins-impl","impl",s,["jenkins"],{muted:s==="idle",ghost:s==="ghost",live:["surprise","run","typing"].includes(s)})}<span>${label}</span></div>`).join("");
+
+// 외형 다양성
+const names=["intent-impl","intent-convert-impl","design-impl","infra-account-impl","infra-docker-impl","db-mssql-impl","k8s-admin-impl","k8s-helm-create-impl","middleware-nginx-impl","middleware-tomcat-impl","monitoring-scouter-impl","backing-redis-impl"];
+document.getElementById("variety").innerHTML=names.map(k=>`<div class="cell">${emp(k,"impl","idle",givenName(k,[k]))}</div>`).join("");
+</script>
+</body>
+</html>

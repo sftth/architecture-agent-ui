@@ -46,6 +46,8 @@ import {
 } from "./types";
 import { COMMON_STAGE, PhaseId, commonStage, phaseIdForStage, stagesForPhase } from "./phases";
 import { activeSubAgents, planOf, registeredAgents } from "./harness";
+import { activityOf } from "./activity";
+import AgentSprites from "./sprites/AgentSprites";
 import "./App.css";
 
 /** run 이 없을 때 넘길 빈 목록. 매번 새로 만들면 콘솔의 memo 가 깨진다. */
@@ -443,6 +445,11 @@ ${text}` : text));
     () => (activeRun?.status === "running" ? activeSubAgents(activeEvents, allAgentKeys) : []),
     [activeRun?.status, activeEvents, allAgentKeys],
   );
+  // 지금 하는 일 — 콘솔 하단 줄과 같은 값. 하네스의 plan 이 위임을 걸고 기다리는지 여기서 안다.
+  const activity = useMemo(
+    () => (activeRun?.status === "running" ? activityOf(activeEvents, allAgentKeys) : null),
+    [activeRun?.status, activeEvents, allAgentKeys],
+  );
   // 이 세션의 CLI 가 실제로 읽어 들인 sub-agent. 세션이 없으면 모른다(null).
   const registered = useMemo(
     () => (activeRun ? registeredAgents(activeEvents) : null),
@@ -549,6 +556,8 @@ ${text}` : text));
 
   return (
     <div className="app-shell">
+      {/* 미니미 파츠 시트. 하네스의 직원들이 여기 심볼을 <use> 로 가져다 그린다. */}
+      <AgentSprites />
       {/* 제목은 한 줄이면 된다. 큰 표제는 매번 같은 말을 하면서 화면 위쪽을 먹었다. */}
       <header className="app-header">
         <div className="app-header-mark">ARCHITECTURE&#8209;AGENT</div>
@@ -609,6 +618,8 @@ ${text}` : text));
             registered={registered}
             onRelaunch={activeRun ? handleRelaunch : undefined}
             relaunching={relaunchId !== null}
+            run={activeRun}
+            activity={activity}
           />
 
           {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를
