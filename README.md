@@ -296,6 +296,46 @@ journalctl -u architecture-agent-ui-backend -f
 journalctl -u architecture-agent-ui-frontend -f
 ```
 
+## Windows 에서 서비스로 상시 구동시키기 (NSSM)
+
+매번 VS Code 터미널에서 백엔드·프론트엔드를 띄우는 대신 Windows 서비스로 등록해 두면
+부팅 때 저절로 뜨고, 터미널을 닫아도 계속 떠 있습니다. `scripts\windows\service.cmd` 하나로
+등록·기동·정지·재기동·상태·로그를 다룹니다(서비스 래퍼는 [NSSM](https://nssm.cc) 2.24,
+처음 `install` 때 `scripts\windows\.nssm\` 에 내려받습니다).
+
+```bat
+scripts\windows\service.cmd install            # 등록 + 기동 (관리자 권한 필요 — UAC 창이 뜸)
+scripts\windows\service.cmd status             # 서비스 상태 + 헬스체크
+scripts\windows\service.cmd restart            # 둘 다 재기동
+scripts\windows\service.cmd restart backend    # 백엔드만 (frontend 도 가능)
+scripts\windows\service.cmd stop / start
+scripts\windows\service.cmd logs backend       # 로그 따라 보기 (Ctrl+C 로 종료)
+scripts\windows\service.cmd uninstall          # 서비스 제거 (코드·data·runs 는 그대로)
+```
+
+- 서비스 이름은 systemd 와 같은 `architecture-agent-ui-backend` / `architecture-agent-ui-frontend`
+  입니다. `services.msc` 에서도 보이고, 시작 유형은 자동입니다.
+- **실행 계정은 지금 로그인한 사용자**입니다. 백엔드가 자식으로 띄우는 `claude` CLI 가 이 사용자의
+  로그인(`%USERPROFILE%\.claude`)·git 설정·PATH 를 그대로 써야 하기 때문입니다. 그래서 `install`
+  때 Windows 비밀번호를 한 번 묻습니다(서비스 관리자에 저장되며 스크립트는 남기지 않습니다).
+  **비밀번호를 바꾸면 서비스가 로그온 실패로 뜨지 않으니 `install` 을 다시 실행**하세요.
+  비밀번호 없이 시험만 하려면 `install -Account LocalSystem` — 단, 그 계정에는 claude 로그인이
+  없어 실행이 실패합니다.
+- `install` 이 지금 사용자에게 두 서비스의 시작·정지 권한을 부여하므로, 그 뒤의
+  `start` / `stop` / `restart` 는 일반 터미널에서 UAC 없이 됩니다.
+- 로그는 `logs\backend.log`, `logs\frontend.log` 에 쌓이고 10MB 를 넘으면 돌립니다.
+  서비스가 뜨지 않으면 이 파일과 이벤트 뷰어(응용 프로그램 로그, 원본 `nssm`)를 보세요.
+- 백엔드는 터미널에서 띄울 때와 같이 `--reload --timeout-graceful-shutdown 5` 로 뜁니다.
+  백엔드 파일을 고치면 서비스 안에서 그대로 다시 읽습니다. 빼려면 `install -NoReload`.
+- 다른 PC 에서 접속하려면 `install -FrontendHost 0.0.0.0` (방화벽에서 5274 인바운드 허용).
+- **터미널에서 이미 띄워 둔 서버가 있으면 포트가 겹쳐 서비스가 못 뜹니다.** `install` 이 이를
+  알려주니 터미널 쪽을 끄고 `start` 하세요.
+- `install` 을 다시 실행하면 기존 서비스를 정지·제거하고 새 설정으로 다시 등록합니다.
+
+> NSSM 은 **정식 2.24 빌드**를 씁니다. CI 빌드(2.24-101)는 Windows 11 에서
+> `RegisterWaitForSingleObject() failed` (이벤트 1009) 로 자식 종료를 감지하지 못해 정지 시
+> STOP_PENDING 에 영원히 머무는 것을 확인했습니다. PATH 에 그 빌드가 있어도 쓰지 않습니다.
+
 ## 프로덕션 빌드
 
 ```bash
