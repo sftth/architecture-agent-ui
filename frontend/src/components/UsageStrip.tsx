@@ -1,72 +1,38 @@
 import { UsageSummary } from "../types";
 import "./UsageStrip.css";
 
-/** 창 이름은 CLI 가 코드로 준다 — 사람 말로 바꿔 둔다. */
 const WINDOW: Record<string, string> = {
-  five_hour: "5시간",
-  seven_day: "7일",
-  opus_weekly: "Opus 주간",
+  five_hour: "5시간 한도", seven_day: "주간 한도",
+  opus_weekly: "주간 한도 (Opus)", seven_day_opus: "주간 한도 (Opus)",
+  seven_day_sonnet: "주간 한도 (Sonnet)",
+  seven_day_overage_included: "주간 한도 (오버리지 포함)", overage: "오버리지 사용량",
 };
 
-const STATUS: Record<string, { text: string; cls: string }> = {
-  allowed: { text: "정상", cls: "ok" },
-  allowed_warning: { text: "여유 적음", cls: "warn" },
-  rejected: { text: "차단", cls: "bad" },
-  throttled: { text: "지연", cls: "bad" },
-};
-
-/** "3시간 후" — 초기화까지 남은 시간. 지났으면 곧 새로 열린다는 뜻이다. */
-function until(epochSeconds: number): string {
-  const minutes = Math.round((epochSeconds * 1000 - Date.now()) / 60000);
-  if (minutes <= 0) return "곧 초기화";
-  if (minutes < 60) return `${minutes}분 후 초기화`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}시간 후 초기화`;
-  return `${Math.round(hours / 24)}일 후 초기화`;
-}
-
-function tokenText(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${Math.round(n / 1000)}K`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
-}
-
-/**
- * 상단 사용량 띠.
- *
- * Claude Code 의 /usage 판처럼 퍼센트를 보이고 싶지만, claude CLI 가 흘려 주는
- * rate_limit_info 에는 소비량도 한도도 없다(status · rateLimitType · resetsAt 뿐).
- * 없는 수를 지어내느니, 실제로 받은 것만 적는다 — 어느 창이 걸려 있고 언제 초기화되는지,
- * 그리고 이 백엔드가 뜬 뒤 이 계정이 실제로 쓴 토큰과 비용.
- */
 export default function UsageStrip({ usage }: { usage: UsageSummary | null }) {
-  if (!usage) return null;
-  const limit = usage.rate_limit;
-  const status = limit ? (STATUS[limit.status] ?? { text: limit.status, cls: "warn" }) : null;
+  const limit = usage?.rate_limit;
+  const known = typeof limit?.utilization === "number" && Number.isFinite(limit.utilization);
+  const percent = known ? Math.round(limit!.utilization! * 100) : null;
+  const windows = limit ? [
+    ...(known ? [{ kind: limit.kind ?? "", utilization: limit.utilization!, resets_at: limit.resets_at }] : []),
+    ...(limit.windows ?? []).filter(w => !known || w.kind !== limit.kind),
+  ] : [];
+  const detail = windows.length ? windows.map(w =>
+    `${WINDOW[w.kind] ?? (w.kind || "크레딧 한도")} ${Math.round(w.utilization * 100)}% 사용` +
+    (w.resets_at ? ` · 초기화 ${new Date(w.resets_at * 1000).toLocaleString("ko-KR")}` : "")
+  ).join("\n") : "한도 사용률 수신 대기 · Claude 실행 후 표시됩니다";
+  const tone = percent !== null && percent >= 100 ? "bad" : percent !== null && percent >= 90 ? "warn" : "ok";
 
   return (
-    <div className="usage" aria-label="사용량">
-      {limit && status ? (
-        <span className="usage-item">
-          <span className="usage-key">{WINDOW[limit.kind ?? ""] ?? limit.kind ?? "제한"}</span>
-          <span className={`usage-dot usage-dot--${status.cls}`} aria-hidden="true" />
-          <span className={`usage-val usage-val--${status.cls}`}>{status.text}</span>
-          {limit.resets_at && <span className="usage-sub">{until(limit.resets_at)}</span>}
-          {limit.using_overage && <span className="usage-sub usage-sub--warn">초과분 사용</span>}
+    <div className="usage" aria-label="크레딧 한도">
+      <span className="usage-credit" tabIndex={0} title={detail} aria-label={`Claude 크레딧 한도: ${detail}`}>
+        <span className="usage-key">CLAUDE</span>
+        <span className={`usage-meter usage-meter--${tone}`} role="meter"
+          aria-label="Claude 한도 사용률" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={percent === null ? undefined : Math.max(0, Math.min(100, percent))}
+          aria-valuetext={percent === null ? "수신 대기" : `${percent}% 사용`}>
+          <span style={{ width: `${Math.max(0, Math.min(100, percent ?? 0))}%` }} />
         </span>
-      ) : (
-        // 아직 한 번도 안 돌렸으면 제한 창 정보 자체가 없다. 지어내지 않고 그렇다고 적는다.
-        <span className="usage-item usage-item--quiet">
-          <span className="usage-key">제한</span>
-          <span className="usage-sub">실행 후 표시</span>
-        </span>
-      )}
-
-      <span className="usage-item">
-        <span className="usage-key">세션</span>
-        <span className="usage-val">{usage.runs}</span>
-        <span className="usage-sub">토큰 {tokenText(usage.tokens)}</span>
-        <span className="usage-sub">${usage.cost_usd.toFixed(2)}</span>
+        <span className="usage-val">{percent === null ? "—" : `${percent}%`}</span>
       </span>
     </div>
   );

@@ -141,9 +141,6 @@ export default function ProjectManager({
                 ) : (
                   <>
                     <span className="pm-name">{p.key}</span>
-                    <span className="pm-meta">
-                      doc {p.docs.length} · img {p.image_docs.length}
-                    </span>
                     <button
                       type="button"
                       className="pm-ghost"

@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AgentDef, ModelDef, StageDef } from "../types";
-import Menu, { MenuItem } from "./Menu";
+import { ModelDef } from "../types";
 import ModelMenu from "./ModelMenu";
 import Chip from "./Chip";
-import { planOf } from "../harness";
 import { CONTEXT_WARN, ContextSize, formatTokens } from "../context";
 import "./Composer.css";
 
@@ -57,12 +55,8 @@ function ContextGauge({ context, compacting }: { context: ContextSize | null; co
 
 /**
  * 화면 오른쪽 아래에 고정된 전역 지시문 입력판.
- * 스테이지 카드마다 입력칸을 두면 지금 무엇을 보내려는지가 화면마다 흩어지므로,
- * "무엇을 적었는가 · 누구에게 · 어느 프로젝트로"를 한 자리에 모아 둔다.
- *
- * 비어 있을 때는 한 줄이다 — 왼쪽에 받을 대상, 가운데 입력칸, 오른쪽에 모델과 보내기.
- * 글이 두 줄을 넘으면 입력칸이 윗줄 전체를 차지하고 컨트롤이 아랫줄로 내려간다.
- * 4줄짜리 빈 칸을 늘 세워 두면 로그가 그만큼 가려지는데, 지시문은 대개 한두 줄이다.
+ * 요청은 main agent가 받고 작업에 맞는 subagent를 정한다.
+ * 입력칸 아래에는 모델·effort와 보내기 컨트롤을 둔다.
  */
 export default function Composer({
   value,
@@ -71,10 +65,6 @@ export default function Composer({
   onRun,
   onStop,
   running,
-  stages,
-  common,
-  agent,
-  onSelectAgent,
   project,
   models,
   model,
@@ -93,11 +83,6 @@ export default function Composer({
   onRun: () => void;
   onStop: () => void;
   running: boolean;
-  stages: StageDef[];
-  /** 어느 단계에서든 부를 수 있는 공통 유틸리티(있을 때만). */
-  common?: StageDef;
-  agent?: AgentDef;
-  onSelectAgent: (agentKey: string) => void;
   project: string;
   models: ModelDef[];
   model: string;
@@ -114,7 +99,7 @@ export default function Composer({
   /** 압축할 세션이 있고 도는 중이 아닌가. */
   canCompact?: boolean;
 }) {
-  const [openMenu, setOpenMenu] = useState<"agent" | "model" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"model" | null>(null);
   // 끌어온 것이 여기 놓인다는 것을 테두리로 알린다. 놓기 전에는 알 방법이 없다.
   const [dragOver, setDragOver] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -146,41 +131,7 @@ export default function Composer({
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
-  // 고를 수 있는 것은 지금 보고 있는 단계의 plan뿐이다. 45개를 통째로 늘어놓으면
-  // 그중 실제로 말을 걸어야 할 상대는 몇 개 안 되는데도 매번 찾아 헤매게 된다.
-  // 단계를 바꾸면 이 목록도 따라 바뀐다 — 분석이면 분석 plan, 구현이면 스테이지별 plan.
-  const agentItems: MenuItem[] = stages.flatMap((stage) => {
-    const plan = planOf(stage);
-    if (plan) {
-      return [
-        {
-          value: plan.key,
-          label: plan.key,
-          hint: stage.title,
-          desc: plan.role,
-        },
-      ];
-    }
-    // plan이 없는 스테이지는 지휘할 순서 자체가 없다 — 자기 agent를 그대로 내놓는다.
-    return stage.agents.map((a) => ({
-      value: a.key,
-      label: a.key,
-      hint: `${stage.title} · plan 없음`,
-      desc: a.role,
-    }));
-  });
-
-  // 공통 유틸리티는 단계에 매이지 않는다 — 분석·설계·구현 어디서 보고 있든 함께 세운다.
-  // (문서 변환·LLM Wiki 조회는 파이프라인이 끝나야 쓰는 것이 아니라 아무 때나 쓰는 것이다.)
-  const commonItems: MenuItem[] = (common?.agents ?? []).map((a) => ({
-    value: a.key,
-    label: a.key,
-    hint: common?.title ?? "공통",
-    desc: a.role,
-  }));
-  const items = [...agentItems, ...commonItems];
-
-  const ready = Boolean(agent) && value.trim().length > 0 && !running;
+  const ready = value.trim().length > 0 && !running;
   const modelLabel = models.find((m) => m.value === model)?.label ?? "Default";
 
   return (
@@ -192,16 +143,6 @@ export default function Composer({
         if (e.target === e.currentTarget) input.current?.focus();
       }}
     >
-      {openMenu === "agent" && (
-        <Menu
-          items={items}
-          value={agent?.key ?? ""}
-          title={`plan ${agentItems.length} · 공통 ${commonItems.length}`}
-          emptyText="카탈로그를 아직 불러오지 못했습니다"
-          onSelect={onSelectAgent}
-          onClose={() => setOpenMenu(null)}
-        />
-      )}
       {openMenu === "model" && (
         <ModelMenu
           models={models}
@@ -285,26 +226,13 @@ export default function Composer({
           if (text) onDropText(text);
         }}
         /* 자리가 넉넉하니 보내는 법을 한 문장으로 다 적는다 — 이 안내를 읽는 유일한 자리다. */
-        placeholder={
-          agent
-            ? `@${agent.key} 에게 무엇을 시킬지 적어 주세요 (Enter 실행 · Shift+Enter 줄바꿈 · 파일 끌어다 놓기 · /compact · /clear)`
-            : "아래에서 plan 을 고르고, 무엇을 시킬지 적어 주세요"
-        }
+        aria-label="Main agent에게 요청"
+        placeholder="무엇을 하시겠어요?"
         spellCheck={false}
       />
 
-      {/* 아래: 고르는 것과 보내는 것. 왼쪽이 "누구에게 · 무엇으로", 오른쪽이 "보내기". */}
+      {/* 아래: 실행 모델과 보내기. */}
       <div className="composer-bar">
-        {/* 받을 대상. @ 아이콘이 대상임을 말하므로 이름표를 달지 않는다. */}
-        <Chip
-          label=""
-          icon={<AtIcon />}
-          value={agent ? agent.key : "대상 없음"}
-          open={openMenu === "agent"}
-          empty={!agent}
-          title={project ? `지시를 받을 plan\n프로젝트 ${project} 로 실행된다` : "지시를 받을 plan"}
-          onClick={() => setOpenMenu((m) => (m === "agent" ? null : "agent"))}
-        />
         <Chip
           label=""
           icon={<SlidersIcon />}
@@ -365,21 +293,6 @@ function ClearIcon() {
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
       <path d="M9.2 2.6 13.4 6.8 8 12.2H5.2L2.6 9.6z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
       <path d="M6.2 5.6 10.4 9.8M3.5 14h10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function AtIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-      <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M10.6 8v1.2a1.6 1.6 0 0 0 3.2 0V8a5.8 5.8 0 1 0-2.3 4.6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
     </svg>
   );
 }

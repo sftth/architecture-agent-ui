@@ -11,13 +11,11 @@ import "./ProjectGate.css";
  */
 export default function ProjectGate({
   projects,
-  agentKey,
   onPick,
   onRunAnyway,
   onClose,
 }: {
   projects: ProjectDef[];
-  agentKey: string;
   /** 고른 프로젝트로 그대로 실행한다. */
   onPick: (project: string) => void;
   onRunAnyway: () => void;
@@ -46,7 +44,7 @@ export default function ProjectGate({
           <div>
             <h3 className="gate-title">프로젝트를 먼저 지정해 주세요</h3>
             <p className="gate-desc">
-              <b>@{agentKey}</b> 를 프로젝트 없이 보내면, 에이전트가 <code>input/*/doc</code> 후보를
+              요청을 프로젝트 없이 보내면, main agent가 <code>input/*/doc</code> 후보를
               나열하고 사용자 확인을 기다립니다. 이 화면은 되물음에 답할 수 없어 아무 작업도 하지
               못한 채 끝납니다.
             </p>
@@ -64,9 +62,6 @@ export default function ProjectGate({
                 <li key={p.key}>
                   <button type="button" className="gate-pick" onClick={() => onPick(p.key)}>
                     <span className="gate-pick-name">{p.key}</span>
-                    <span className="gate-pick-meta">
-                      doc {p.docs.length} · img {p.image_docs.length}
-                    </span>
                     <span className="gate-pick-go">이 프로젝트로 실행</span>
                   </button>
                 </li>

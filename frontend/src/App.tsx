@@ -35,7 +35,6 @@ import {
   stopRun,
 } from "./api/client";
 import {
-  AgentDef,
   ClaudeAccounts,
   LogEvent,
   ModelDef,
@@ -65,7 +64,7 @@ export default function App() {
   // input/{project} 격리 구조: 실행 대상 프로젝트를 골라 프롬프트에 함께 실어 보낸다.
   const [projects, setProjects] = useState<ProjectDef[]>([]);
   const [project, setProject] = useState<string>("");
-  // 지시문 입력판이 전역이라 대상과 본문도 여기서 들고 있는다.
+  // 하네스에서 살펴보는 agent. 프롬프트의 수신 대상과는 무관하다.
   const [agentKey, setAgentKey] = useState<string>("");
   const [prompt, setPrompt] = useState<string>("");
   const [managingProjects, setManagingProjects] = useState(false);
@@ -76,7 +75,7 @@ export default function App() {
   // 실행에 쓸 모델·effort (claude CLI --model / --effort). 빈 값이면 CLI 기본값.
   const [models, setModels] = useState<ModelDef[]>([]);
   const [model, setModel] = useState<string>("");
-  const [effort, setEffort] = useState<string>("");
+  const [effort, setEffort] = useState<string>("high");
   const [runsById, setRunsById] = useState<Record<string, RunSummary>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, LogEvent[]>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -125,7 +124,7 @@ export default function App() {
     setManagingProjects(false);
     setGateOpen(false);
     setModel("");
-    setEffort("");
+    setEffort("high");
     setRunsById({});
     setEventsByRun({});
     setActiveRunId(null);
@@ -207,6 +206,10 @@ export default function App() {
     setEventsByRun((prev) => ({ ...prev, [runId]: [] }));
     const close = openRunSocket(runId, (event) => {
       if (event === null) return;
+      if (event.data && typeof event.data === "object" &&
+          "type" in event.data && event.data.type === "rate_limit_event") {
+        getUsage().then(setUsage).catch(() => undefined);
+      }
       // 이벤트 하나에 렌더 한 번씩 하면 스트림이 몰릴 때 화면이 따라오지 못한다.
       // 한 프레임 동안 온 것을 모아 한 번에 넣는다.
       pendingRef.current.push(event);
@@ -259,7 +262,7 @@ export default function App() {
       await handleCompact();
       return;
     }
-    if (!agentKey || !text) return;
+    if (!text) return;
     // 프로젝트를 안 고르면 에이전트가 되묻다 끝나므로, 보내기 전에 붙잡는다.
     if (!project) {
       setGateOpen(true);
@@ -276,11 +279,10 @@ export default function App() {
       return;
     }
     setSendError(null);
-    // 플래너가 먼저 받는다 — 대상을 설계서에서 도출해 확정한 뒤 점검 executor 에 넘긴다.
-    // 화면이 executor 를 직접 부르면 그 도출이 통째로 빠진다.
+    // main agent가 설계서와 요청을 보고 점검 업무를 위임한다.
     const text = "설계서 기준으로 WEB/WAS 상태를 점검해줘 (mode=snapshot)";
     try {
-      const run = await createRun("middleware-status-plan", text, project, model, effort);
+      const run = await createRun(text, project, model, effort);
       setRunsById((prev) => ({ ...prev, [run.id]: run }));
       setActiveRunId(run.id);
       connect(run.id);
@@ -303,8 +305,8 @@ ${text}` : text));
     const held = activeRunId && activeRun && activeRun.status !== "running" ? activeRunId : null;
     try {
       const run = held
-        ? await continueRun(held, prompt, agentKey, withProject, model, effort)
-        : await createRun(agentKey, prompt, withProject, model, effort);
+        ? await continueRun(held, prompt, withProject, model, effort)
+        : await createRun(prompt, withProject, model, effort);
       setRunsById((prev) => ({ ...prev, [run.id]: run }));
       setActiveRunId(run.id);
       // 이어 말한 경우에도 다시 연결한다 — 서버가 앞 기록을 되짚어 준 뒤 새 이벤트를 잇는다.
@@ -324,7 +326,7 @@ ${text}` : text));
 
   /**
    * 같은 세션에 이어서 한 턴을 보낸다 — 결과 보고의 물음에 답할 때, 세션을 다시 열 때.
-   * 전역 입력판의 지시문과 달리 대상은 그 run 의 agent 그대로다: 묻는 쪽이 답을 받는다.
+   * 답변과 재개 요청도 main agent가 받아 다음 업무를 정한다.
    */
   async function sendTurn(run: RunSummary, text: string, failNote: string) {
     setSendError(null);
@@ -332,7 +334,6 @@ ${text}` : text));
       const next = await continueRun(
         run.id,
         text,
-        run.agent_key,
         run.project ?? project,
         model,
         effort,
@@ -483,7 +484,6 @@ ${text}` : text));
     () => stages.find((stage) => stage.agents.some((a) => a.key === agentKey)),
     [stages, agentKey],
   );
-  const agent: AgentDef | undefined = agentStage?.agents.find((a) => a.key === agentKey);
 
   // plan 하나가 도는 동안 impl·eval은 같은 프로세스 안에서 불려 나가 run 기록이 남지
   // 않는다. 지금 누가 일하고 있는지는 로그에서 읽어내 하네스에 넘긴다.
@@ -568,11 +568,9 @@ ${text}` : text));
   }, [activeRunId]);
 
 
-  // 단계를 옮기면 그 단계 첫 스테이지의 plan을 겨눈다. 이미 이 단계 것을 고른 상태면 두고,
-  // 카탈로그가 아직 없거나 이 단계에 sub-agent가 없으면 비워 둔다(칩에 "대상 없음"으로 보인다).
+  // 단계를 옮기면 하네스에서 그 단계의 plan을 살펴본다. 요청 대상은 항상 main agent다.
   useEffect(() => {
-    // 따라가는 중의 단계 이동은 화면만 옮긴 것이다 — 사람이 겨눠 둔 대상까지 바꾸지
-    // 않는다. 쓰던 지시문이 엉뚱한 plan 으로 날아가면 안 된다.
+    // 실행을 따라가는 중에는 사람이 살펴보던 agent 선택을 유지한다.
     if (follow && liveStage) return;
     // 이 단계 것을 골랐거나, 어느 단계에서나 쓰는 공통 유틸리티를 골랐으면 그대로 둔다.
     const held =
@@ -724,10 +722,6 @@ ${text}` : text));
             onRun={handleRun}
             onStop={handleStop}
             running={activeRun?.status === "running"}
-            stages={visibleStages}
-            common={common}
-            agent={agent}
-            onSelectAgent={handleSelectAgent}
             project={project}
             models={models}
             model={model}
@@ -759,7 +753,6 @@ ${text}` : text));
       {gateOpen && (
         <ProjectGate
           projects={projects}
-          agentKey={agentKey}
           onPick={(picked) => {
             setProject(picked);
             void startRun(picked);

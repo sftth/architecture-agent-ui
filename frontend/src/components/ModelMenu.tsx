@@ -76,8 +76,9 @@ export default function ModelMenu({
             className={`mm-row${option.value === model ? " mm-row--on" : ""}`}
             title={option.note}
             onClick={() => {
-              // 고른 모델이 지금 effort를 지원하지 않으면 effort는 비운다.
-              onChange(option.value, option.efforts.includes(effort) ? effort : "");
+              // 지원 모델로 돌아오면 high를 기본 선택한다.
+              onChange(option.value, option.efforts.includes(effort)
+                ? effort : option.efforts.includes("high") ? "high" : option.efforts[0] ?? "");
             }}
           >
             <span className="mm-row-main">
@@ -106,23 +107,25 @@ export default function ModelMenu({
               Effort <em>{effort || "기본"}</em>
             </span>
             <span className="mm-track">
-              <button
-                type="button"
-                className={`mm-dot mm-dot--none${effort === "" ? " mm-dot--on" : ""}`}
-                title="지정 안 함 — CLI 기본값을 그대로 쓴다"
-                aria-label="지정 안 함"
-                onClick={() => onChange(model, "")}
-              />
-              <span className="mm-track-split" aria-hidden="true" />
               {current.efforts.map((level) => (
                 <button
                   key={level}
                   type="button"
-                  className={`mm-dot${level === effort ? " mm-dot--on" : ""}`}
+                  className={`mm-level${level === effort ? " mm-level--on" : ""}`}
                   title={`${level} — ${EFFORT_NOTE[level] ?? ""}`}
                   aria-label={level}
+                  aria-pressed={level === effort}
                   onClick={() => onChange(model, level)}
-                />
+                >
+                  <span className="mm-dot" aria-hidden="true">
+                    {level === effort && (
+                      <svg viewBox="0 0 16 16" width="12" height="12">
+                        <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor"
+                          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
               ))}
             </span>
           </div>
