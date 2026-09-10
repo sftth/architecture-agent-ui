@@ -1,12 +1,14 @@
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from .orchestration import MAIN_AGENT_KEY
 
 RunStatus = Literal["running", "success", "error", "stopped"]
 
 
 class CreateRunRequest(BaseModel):
-    agent_key: str
+    agent_key: str = MAIN_AGENT_KEY
     prompt: str
     # input/{project} 격리 구조에 맞춰 실행 대상 프로젝트를 함께 보낸다(선택).
     project: Optional[str] = None
@@ -15,9 +17,9 @@ class CreateRunRequest(BaseModel):
     effort: Optional[str] = None
 
 class ContinueRunRequest(BaseModel):
-    """이미 있는 세션에 지시문을 하나 더 보낸다. agent_key 를 주면 그 세션 안에서 대상을 바꾼다."""
+    """기존 대화를 main agent에 이어 보낸다. 명시적 agent_key는 이전 API와 호환한다."""
     prompt: str
-    agent_key: str = ""
+    agent_key: str = MAIN_AGENT_KEY
     project: Optional[str] = None
     model: Optional[str] = None
     effort: Optional[str] = None
@@ -110,9 +112,14 @@ class AddClaudeAccountRequest(BaseModel):
     secret: str
 
 
+class RateWindow(BaseModel):
+    kind: str
+    utilization: float
+    resets_at: Optional[int] = None
+
+
 class RateLimit(BaseModel):
-    """claude CLI 가 stream 으로 흘려 주는 제한 창 상태. 소비량·한도는 주지 않는다 —
-    퍼센트를 만들 수 없는 이유이고, 그래서 창 종류와 초기화 시각만 싣는다."""
+    """Claude 계정의 한도 상태와 실제 수신한 창별 사용률."""
 
     status: str
     # "five_hour" / "seven_day" 등 지금 걸려 있는 창
@@ -120,6 +127,8 @@ class RateLimit(BaseModel):
     # unix epoch(초). 이 시각에 창이 새로 열린다.
     resets_at: Optional[int] = None
     using_overage: bool = False
+    utilization: Optional[float] = None
+    windows: list[RateWindow] = Field(default_factory=list)
 
 
 class RunUsage(BaseModel):

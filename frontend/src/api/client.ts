@@ -144,7 +144,6 @@ export async function getProjects(): Promise<{ projects: ProjectDef[] }> {
 }
 
 export async function createRun(
-  agentKey: string,
   prompt: string,
   project?: string | null,
   model?: string | null,
@@ -153,7 +152,6 @@ export async function createRun(
   return request<RunSummary>("/api/runs", {
     method: "POST",
     body: JSON.stringify({
-      agent_key: agentKey,
       prompt,
       project: project || null,
       model: model || null,
@@ -278,7 +276,6 @@ export function workspaceRawUrl(path: string): string {
 export async function continueRun(
   runId: string,
   prompt: string,
-  agentKey: string,
   project: string,
   model: string,
   effort: string,
@@ -287,7 +284,6 @@ export async function continueRun(
     method: "POST",
     body: JSON.stringify({
       prompt,
-      agent_key: agentKey,
       project: project || null,
       model: model || null,
       effort: effort || null,

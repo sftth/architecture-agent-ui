@@ -26,9 +26,9 @@ MODELS = [
         "efforts": EFFORTS,
     },
     {
-        "value": "claude-fable-5",
-        "label": "Fable 5",
-        "note": "가장 어려운 추론·장기 실행 작업",
+        "value": "claude-fable-5-1",
+        "label": "Fable 5.1",
+        "note": "고난도 추론·장기 실행 에이전트 작업 (1M 컨텍스트)",
         "efforts": EFFORTS,
     },
     {

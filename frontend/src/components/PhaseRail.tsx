@@ -44,11 +44,10 @@ export default function PhaseRail({
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
   const projectItems: MenuItem[] = [
-    { value: "", label: "프로젝트 지정 안 함", desc: "지시문을 그대로 전달합니다" },
+    { value: "", label: "프로젝트 없이 실행", desc: "입력한 지시문만 보냅니다" },
     ...projects.map((p) => ({
       value: p.key,
       label: p.key,
-      hint: `doc ${p.docs.length} · img ${p.image_docs.length}`,
     })),
   ];
 
@@ -68,15 +67,15 @@ export default function PhaseRail({
           value={project || "지정 안 함"}
           open={projectMenuOpen}
           empty={!project}
-          title="input/{project} 기준 실행 대상"
+          title="실행할 프로젝트 선택"
           onClick={() => setProjectMenuOpen((open) => !open)}
         />
         {projectMenuOpen && (
           <Menu
             items={projectItems}
             value={project}
-            title="input/{project} — 모든 단계에 함께 적용"
-            emptyText="input/ 아래에 프로젝트가 없습니다"
+            title="실행할 프로젝트 선택"
+            emptyText="등록된 프로젝트가 없습니다"
             placement="down"
             onSelect={onSelectProject}
             onClose={() => setProjectMenuOpen(false)}

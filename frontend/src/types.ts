@@ -124,6 +124,8 @@ export interface ApmAccountView {
 
 /** claude CLI 가 흘려 주는 제한 창. 소비량·한도는 주지 않아 퍼센트는 만들 수 없다. */
 export interface RateLimit {
+  utilization: number | null;
+  windows: { kind: string; utilization: number; resets_at: number | null }[];
   status: string;
   /** "five_hour" / "seven_day" 등 지금 걸려 있는 창 */
   kind: string | null;

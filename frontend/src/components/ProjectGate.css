@@ -111,13 +111,6 @@
   text-overflow: ellipsis;
 }
 
-.gate-pick-meta {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--paper-500);
-}
-
 .gate-pick-go {
   flex: none;
   font-family: var(--font-label);

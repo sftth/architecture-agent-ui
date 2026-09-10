@@ -11,6 +11,8 @@ from . import accounts, store
 from .agents_catalog import find_agent
 from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
 from .models import LogEvent, RateLimit, RunSummary, RunUsage
+from .orchestration import MAIN_AGENT_KEY, build_run_prompt
+from .response_policy import with_response_policy
 
 
 def _now() -> str:
@@ -306,12 +308,8 @@ def _handle_stream_line(run: RunState, raw_line: str):
         # 제한 창은 run 이 아니라 **계정**에 걸리는 값이다. 계정을 바꿔 탈 수 있게 된 뒤로는
         # 계정마다 따로 들고 있어야 한다 — Max 가 막혔다는 표시가 Enterprise 로 바꾼 뒤에도
         # 남아 있으면 안 되고, 반대로 Enterprise 가 막힌 것을 Max 의 것으로 읽어도 안 된다.
-        limit = RateLimit(
-            status=str(status),
-            kind=info.get("rateLimitType"),
-            resets_at=info.get("resetsAt"),
-            using_overage=bool(info.get("isUsingOverage")),
-        )
+        from .rate_limits import parse_rate_limit
+        limit = parse_rate_limit(info)
         run_manager.rate_limits[(run.user_id, run.account_id)] = limit
         accounts.note_rate_limit(run.user_id, run.account_id, str(status))
         # allowed 는 "아무 일 없음"이라 화면에서 걸러지는 잡음이지만, 그 밖의 상태는
@@ -394,6 +392,9 @@ def _check_agent_registered(run: "RunState", raw: dict) -> None:
     띄울 수 있다. 그래서 판정하는 즉시 프로세스를 끊는다 — 살려 두면 그 순간부터
     잘못된 실행에 돈이 든다.
     """
+    # main은 CLI 자체의 대화 주체이며 .claude/agents에 등록되는 subagent가 아니다.
+    if run.agent_key == MAIN_AGENT_KEY:
+        return
     names = raw.get("agents")
     if not isinstance(names, list):
         # 목록을 주지 않는 CLI 버전이면 판정하지 않는다. 모른다는 이유로 막지는 않는다.
@@ -498,6 +499,9 @@ async def _execute(run: RunState):
 
     loop = asyncio.get_running_loop()
 
+    # 내부 문맥 요약은 사용자 답변이 아니므로 별도의 압축 지시문을 그대로 쓴다.
+    cli_prompt = run.full_prompt if run.compacting else with_response_policy(run.full_prompt)
+
     for attempt in range(1, AGENT_REGISTER_ATTEMPTS + 1):
         run.attempt = attempt
         run.agent_registered = None
@@ -505,7 +509,7 @@ async def _execute(run: RunState):
 
         argv = [
             CLAUDE_BIN,
-            "-p", run.full_prompt,
+            "-p", cli_prompt,
             "--output-format", "stream-json",
             "--verbose",
             "--permission-mode", CLAUDE_PERMISSION_MODE,
@@ -632,6 +636,15 @@ async def _run_once(
         return "done"
 
 
+def _resolve_agent(agent_dir: str, agent_key: str):
+    if agent_key == MAIN_AGENT_KEY:
+        return {"key": "main", "title": "Main agent"}, {"label": "Main agent"}
+    stage, agent = find_agent(Path(agent_dir), agent_key)
+    if agent is None:
+        raise ValueError(f"알 수 없는 agent_key: {agent_key}")
+    return stage, agent
+
+
 class RunManager:
     def __init__(self):
         self.runs: Dict[str, RunState] = {}
@@ -683,16 +696,10 @@ class RunManager:
 
     def create_run(self, user_id: str, agent_dir: str, agent_key: str, prompt: str,
                    project: Optional[str] = None, model: str = "", effort: str = "") -> RunState:
-        stage, agent = find_agent(Path(agent_dir), agent_key)
-        if agent is None:
-            raise ValueError(f"알 수 없는 agent_key: {agent_key}")
+        stage, agent = _resolve_agent(agent_dir, agent_key)
 
         run_id = uuid.uuid4().hex[:12]
-        full_prompt = f"@{agent_key} {prompt}".strip()
-        if project:
-            # 프로젝트를 명시하지 않으면 에이전트가 후보를 나열하고 사용자 확인을 기다리는데
-            # (CLAUDE.md Input File Management Rules), 비대화형 실행에서는 거기서 끝나버린다.
-            full_prompt = f"{full_prompt} (프로젝트: {project})"
+        full_prompt = build_run_prompt(agent_key, prompt, project)
         run = RunState(
             run_id=run_id,
             user_id=user_id,
@@ -713,7 +720,7 @@ class RunManager:
         self._tasks[run_id] = asyncio.create_task(_execute(run))
         return run
 
-    def continue_run(self, run_id: str, prompt: str, agent_key: str = "",
+    def continue_run(self, run_id: str, prompt: str, agent_key: str = MAIN_AGENT_KEY,
                      project: Optional[str] = None, model: str = "",
                      effort: str = "") -> RunState:
         """이미 있는 세션에 지시문을 하나 더 보낸다.
@@ -730,11 +737,9 @@ class RunManager:
         if run.status == "running":
             raise ValueError("아직 실행 중인 세션입니다")
 
-        # 이어 말할 때도 대상을 바꿀 수 있다 — 같은 대화 안에서 다른 plan 을 부를 수 있어야 한다.
+        # 이전 subagent 세션도 기본적으로 main agent가 이어받는다.
         if agent_key and agent_key != run.agent_key:
-            stage, agent = find_agent(Path(run.agent_dir), agent_key)
-            if agent is None:
-                raise ValueError(f"알 수 없는 agent_key: {agent_key}")
+            stage, agent = _resolve_agent(run.agent_dir, agent_key)
             run.agent_key = agent_key
             run.agent_label = agent["label"]
             run.stage_key = stage["key"]
@@ -748,10 +753,7 @@ class RunManager:
             run.effort = effort
 
         run.prompt = prompt
-        full_prompt = f"@{run.agent_key} {prompt}".strip()
-        if run.project:
-            full_prompt = f"{full_prompt} (프로젝트: {run.project})"
-        run.full_prompt = full_prompt
+        run.full_prompt = build_run_prompt(run.agent_key, prompt, run.project)
 
         run.status = "running"
         run.ended_at = None
