@@ -9,7 +9,7 @@ webapp 은 Desktop Client 와 같은 6100 프로토콜로 Collector 에 로그�
 이 백엔드는 그것이 127.0.0.1 에 낸 REST 를 읽는다. 서버에는 아무것도 새로 놓지 않고,
 보안그룹도 그대로다 — 6100 은 Desktop Client 용으로 이미 열려 있다.
 
-어디서 값을 얻는가 — Collector 주소·포트는 `output/{project}/confirmed/infra_confirmed.json`
+어디서 값을 얻는가 — Collector 주소·포트는 `output/{project}/confirmed/monitoring_confirmed.json`
 의 `monitoring_targets.scouter` 에 planner 가 적어 둔 것이고, 로그인 계정은 사용자가 화면에서
 넣어 둔 것이다. 여기 없는 값을 지어내지 않는다.
 """
@@ -86,28 +86,38 @@ def _str(v) -> Optional[str]:
 
 
 def load_collector(agent_dir: str, project: str) -> Tuple[Optional[ApmCollector], Optional[str]]:
-    """infra_confirmed.json 에서 Collector 주소를 읽는다. 돌려주는 것: (collector, 못 읽은 이유)."""
-    path = Path(agent_dir) / "output" / project / "confirmed" / "infra_confirmed.json"
+    """monitoring_confirmed.json 에서 Collector 주소를 읽는다. 돌려주는 것: (collector, 못 읽은 이유)."""
+    path = Path(agent_dir) / "output" / project / "confirmed" / "monitoring_confirmed.json"
     if not path.is_file():
-        return None, f"확정값 파일이 없습니다: output/{project}/confirmed/infra_confirmed.json"
+        return None, f"확정값 파일이 없습니다: output/{project}/confirmed/monitoring_confirmed.json"
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return None, f"infra_confirmed.json 을 읽지 못했습니다: {exc}"
+        return None, f"monitoring_confirmed.json 을 읽지 못했습니다: {exc}"
 
     scouter = ((raw.get("monitoring_targets") or {}).get("scouter")) or {}
     if not scouter:
-        return None, "infra_confirmed.json 에 monitoring_targets.scouter 가 없습니다 — Scouter 설치 계획(@monitoring-plan)이 먼저입니다"
+        return None, "monitoring_confirmed.json 에 monitoring_targets.scouter 가 없습니다 — Scouter 설치 계획(@monitoring-plan)이 먼저입니다"
     common = scouter.get("common") or {}
     nodes = [n for n in (scouter.get("nodes") or []) if isinstance(n, dict)]
     node = next((n for n in nodes if n.get("install_collector")), None)
     if node is None:
         return None, "Collector 노드(install_collector=true)가 확정값에 없습니다"
-    # 이 백엔드는 VPC 밖에 있으니 공인 IP 로 간다 — Desktop Client 가 쓰는 주소와 같다.
+    # Desktop Client 의 외부 접속 주소가 우선이다. collector_ip 는 에이전트용 사설 IP 일 수 있다.
+    endpoint = _str((common.get("desktop_client") or {}).get("endpoint"))
     ip = _str(node.get("ip")) or _str(common.get("collector_ip"))
+    port = common.get("tcp_port")
+    if endpoint:
+        host, separator, endpoint_port = endpoint.strip().rpartition(":")
+        try:
+            port = int(endpoint_port)
+        except ValueError:
+            port = None
+        if not separator or not host.strip() or port is None or not 1 <= port <= 65535:
+            return None, "monitoring_confirmed.json 의 monitoring_targets.scouter.common.desktop_client.endpoint 는 host:port 형식이어야 합니다"
+        ip = host.strip().removeprefix("[").removesuffix("]")
     if not ip:
         return None, "Collector 노드의 ip 가 없습니다"
-    port = common.get("tcp_port")
     return ApmCollector(
         hostname=_str(node.get("hostname")) or ip,
         ip=ip,
