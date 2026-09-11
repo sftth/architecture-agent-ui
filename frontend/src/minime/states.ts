@@ -7,6 +7,7 @@ import { Look } from "./look";
 export type MinimeState =
   // 쉬는 사람
   | "idle"
+  | "sleep"
   | "breathe"
   | "chat"
   | "coffee"
@@ -17,12 +18,14 @@ export type MinimeState =
   | "yawn"
   | "doze"
   // 일하는 사람
+  | "busy"
   | "surprise"
   | "run"
   | "typing"
   | "peek"
   | "thinking"
   // 결과
+  | "speech"
   | "success"
   | "error"
   | "stopped"
@@ -35,29 +38,14 @@ export interface Beat {
 
 /** 빈둥거림 — 쉬는 사람이 저마다의 시계로 하나씩 고른다. */
 export const IDLE_BEATS: Beat[] = [
-  { state: "breathe", ms: 1600 },
-  { state: "chat", ms: 1800 },
-  { state: "coffee", ms: 2400 },
-  { state: "glance", ms: 900 },
-  { state: "stretch", ms: 1200 },
-  { state: "walk", ms: 1900 },
-  { state: "hop", ms: 700 },
-  { state: "yawn", ms: 1400 },
+  { state: "sleep", ms: 10000 },
+  { state: "walk", ms: 4000 },
+  { state: "idle", ms: 6000 },
+  { state: "thinking", ms: 6000 },
 ];
 
-/** 일하는 사람이 타이핑 사이에 끼우는 짧은 움직임 — 뛰어가고, 옆을 보고. */
-export const WORK_BURSTS: Beat[] = [
-  { state: "run", ms: 1100 },
-  { state: "peek", ms: 1300 },
-  { state: "run", ms: 900 },
-];
-
-/** 일이 들어왔을 때의 전이 시간. */
-export const SURPRISE_MS = 600;
-export const RUN_MS = 900;
-export const SUCCESS_MS = 900;
-/** 마지막 run 이 끝난 뒤 이만큼 아무 일이 없으면 졸기 시작한다. */
-export const DOZE_AFTER_MS = 5 * 60_000;
+/** 결과를 반환한 직원의 말풍선 표시 시간. */
+export const SPEECH_MS = 3000;
 
 export interface Frame {
   legs: "m-legs-stand" | "m-legs-a" | "m-legs-b";
@@ -87,6 +75,7 @@ const WALK: Frame[] = [f({ legs: "m-legs-a" }), f({ dy: -1 }), f({ legs: "m-legs
 /** 상태 → 프레임 1·2·4장. 프레임 수가 곧 애니메이션 종류다(1 정지 · 2 번갈아 · 4 걷기). */
 export function framesOf(state: MinimeState): Frame[] {
   switch (state) {
+    case "idle":
     case "breathe":
       return [f({}), f({ dy: 1 })];
     case "chat":
@@ -104,11 +93,20 @@ export function framesOf(state: MinimeState): Frame[] {
       return [f({}), f({ dy: -2 })];
     case "yawn":
       return [f({ face: "f-surprise" }), f({ face: "f-sleep" })];
+    case "sleep":
     case "doze":
     case "stopped":
       return [f({ face: "f-sleep", top: ["p-zzz"] })];
     case "surprise":
       return [f({ face: "f-surprise", hands: "m-hands-up", top: ["p-bang"] })];
+    case "busy":
+      // 업데이트된 킷의 busy-1..4: 노트북을 들고 뛰며 땀 3방울이 번갈아 움직인다.
+      return WALK.map((frame, i) => ({
+        ...frame,
+        face: "f-focus",
+        props: ["p-laptop"],
+        top: [i % 2 ? "p-sweat-2" : "p-sweat"],
+      }));
     case "typing":
       // 손이 오르내리고 머리가 1px 끄덕인다 — 손만 움직이면 32px 에서는 서 있는 것과 같다.
       return [
@@ -121,12 +119,13 @@ export function framesOf(state: MinimeState): Frame[] {
         f({ face: "f-focus", hands: "m-hands-type-a", props: ["p-laptop"] }),
       ];
     case "thinking":
-      return [f({ face: "f-think", top: ["p-bubble"] }), f({ face: "f-think", top: ["p-bubble"], dy: 1 })];
+      return [f({ face: "f-think" }), f({ face: "f-think", dy: 1 })];
+    case "speech":
+      return [f({ face: "f-happy", top: ["p-bubble"] }), f({ face: "f-happy", top: ["p-bubble"], dy: -1 })];
     case "success":
       return [f({ face: "f-happy", top: ["p-spark"] }), f({ face: "f-happy", top: ["p-spark"], dy: -1 })];
     case "error":
       return [f({ face: "f-error", top: ["p-alert"] })];
-    case "idle":
     case "ghost":
     default:
       return [f({})];
@@ -136,6 +135,7 @@ export function framesOf(state: MinimeState): Frame[] {
 /** 프레임 한 바퀴의 길이(ms). 프레임이 하나면 의미 없다. */
 export function cycleMsOf(state: MinimeState): number {
   switch (state) {
+    case "busy":
     case "run":
       return 480;
     case "walk":
@@ -178,5 +178,5 @@ export function layersOf(look: Look, frame: Frame): string[] {
 
 /** 일하고 있는 상태 — 발밑이 amber 로 켜지고 명패가 굵어진다. */
 export function isBusy(state: MinimeState): boolean {
-  return state === "surprise" || state === "run" || state === "typing" || state === "peek";
+  return state === "busy" || state === "surprise" || state === "run" || state === "typing" || state === "peek";
 }

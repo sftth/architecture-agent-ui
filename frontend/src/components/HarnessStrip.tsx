@@ -310,10 +310,15 @@ function RegDot({ registered, agentKey }: { registered: Set<string> | null; agen
 
 /** 상태를 사람 말로 — 명패 툴팁에 덧붙인다. 색과 표정만으로 말하지 않기 위해. */
 const STATE_TEXT: Partial<Record<MinimeState, string>> = {
+  busy: "일하는 중",
+  speech: "결과를 반환하는 중",
+  sleep: "자는 중 — 마우스를 올리면 깨어납니다",
+  idle: "쉬는 중",
+  walk: "걷는 중",
   surprise: "지시 받음",
   run: "달려가는 중",
   typing: "일하는 중",
-  thinking: "sub-agent 에 위임하고 기다리는 중",
+  thinking: "생각하는 중",
   success: "끝냈다",
   error: "실패로 끝났다",
   stopped: "멈춤",
@@ -365,8 +370,18 @@ function Office({
     () => new Set([...stage.agents, ...(common?.agents ?? [])].map((a) => a.key)),
     [stage, common],
   );
-  const outside: AgentDef[] = activeAgents
-    .filter((k) => !catalog.has(k))
+  // 카탈로그 밖 직원도 반환 후 자리에 남아 말풍선과 대기 상태를 보여 준다.
+  const scope = `${stage.key}:${run?.id ?? ""}`;
+  const [seenOutside, setSeenOutside] = useState<{ scope: string; keys: string[] }>({ scope, keys: [] });
+  const outsideKeys = [...new Set([
+    ...(seenOutside.scope === scope ? seenOutside.keys : []),
+    ...activeAgents,
+  ])].filter((key) => !catalog.has(key));
+  const outsideKey = outsideKeys.join("\n");
+  useEffect(() => {
+    setSeenOutside({ scope, keys: outsideKeys });
+  }, [scope, outsideKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const outside: AgentDef[] = outsideKeys
     .map((k) => ({ key: k, label: k, role: "이 스테이지 밖에서 불린 agent", tools: [] }));
 
   const depts: Dept[] = [
@@ -378,7 +393,7 @@ function Office({
 
   const keys = depts.flatMap((d) => d.agents.map((a) => a.key));
   const plan = planOf(stage);
-  const states = useCrew({
+  const { states, wakeUp, onHover } = useCrew({
     keys,
     catalog,
     activeKeys: activeAgents,
@@ -416,6 +431,8 @@ function Office({
                 selected={selectedAgent === agent.key}
                 pickable={commandable.has(agent.key)}
                 onPick={() => onSelectAgent(agent.key)}
+                onHover={(over) => onHover(agent.key, over)}
+                onWake={() => wakeUp(agent.key)}
               />
             ))}
           </Floor>
@@ -454,6 +471,8 @@ function Employee({
   selected,
   pickable,
   onPick,
+  onHover,
+  onWake,
 }: {
   agent: AgentDef;
   role: MinimeRole;
@@ -462,6 +481,8 @@ function Employee({
   selected: boolean;
   pickable: boolean;
   onPick: () => void;
+  onHover: (over: boolean) => void;
+  onWake: () => void;
 }) {
   const busy = isBusy(state);
   const cls = [
@@ -486,11 +507,13 @@ function Employee({
     </>
   );
   return pickable ? (
-    <button type="button" className={cls} data-tip={title} onClick={onPick}>
+    <button type="button" className={cls} data-tip={title} onClick={onPick}
+      onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} onFocus={onWake}>
       {body}
     </button>
   ) : (
-    <span className={cls} data-tip={title}>
+    <span className={cls} data-tip={title}
+      onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
       {body}
     </span>
   );
@@ -556,7 +579,7 @@ function Roster({
               <Minime
                 look={lookOf(agent.key)}
                 role={role}
-                state={now ? "typing" : missing ? "ghost" : "idle"}
+                state={now ? "busy" : missing ? "ghost" : "idle"}
                 size={1}
                 className="roster-face"
               />

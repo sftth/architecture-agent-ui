@@ -34,6 +34,7 @@
 /* ── 상태에 따른 채도 ────────────────────────────────
    안 도는 사람은 물러나 있어야 도는 사람이 보인다. 빈둥거리는 순간만 제 색으로. */
 .minime--idle { filter: saturate(0.55); opacity: 0.85; }
+.minime--sleep,
 .minime--doze,
 .minime--stopped { filter: saturate(0.4); opacity: 0.8; }
 .minime--ghost { filter: grayscale(1); opacity: 0.4; }

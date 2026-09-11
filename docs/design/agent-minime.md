@@ -1,5 +1,16 @@
 # Agent 미니미 — 하네스 패널을 "직원 사무실"로
 
+## 2026-09-11 동작 업데이트 (아래 초기 설계보다 우선)
+
+- 업데이트 킷: `Downloads/files (1)/sprites.svg`. `f-focus`, `p-sweat`, `p-sweat-2`를 반영했다.
+- sub-agent 작업 시작 즉시 `busy`: 노트북 + 걷기 4프레임 + 땀방울 교대, 120ms/프레임.
+- 결과 반환 시 `speech`: 웃는 얼굴과 말풍선을 3초간 표시한 뒤 대기로 돌아간다.
+- 대기는 직원마다 `sleep`, `walk`, `idle`, `thinking` 중 무작위 전환한다. thinking에는 결과 말풍선을 붙이지 않는다.
+- sleep 상태에 마우스를 올리면 즉시 idle로 깨며 10초간 깨어 있다. 마우스가 올라간 동안 sleep을 고르지 않는다. 선택 가능한 직원은 키보드 포커스로도 깨운다.
+- 카탈로그 밖에서 호출된 직원도 같은 실행 내에서는 자리에 남아 결과와 대기 상태를 보여 준다.
+- 미등록 직원의 ghost, 실행 실패의 error 표시는 유지한다. 중지 후에는 대기 상태를 따른다.
+- 개발 미리보기 `/dev-office.html?scene=busy`의 작업 시작·결과 반환·실행 완료·실행 중지 버튼으로 전이를 확인한다.
+
 브랜치 `feat/agent-minime`. 원본 킷은 `Downloads/architecture agent minime/` (README.md · sprites.svg · preview.html).
 미리보기: `docs/design/agent-minime-preview.html` — 로컬 HTTP 로 열면 아래 설계가 그대로 그려진다(`?light` 로 밝은 테마).
 
