@@ -42,3 +42,9 @@ backend/vendor/
 
 # 개인 로컬 설정 — 사람마다 다르고 공유할 값이 아니다(.local 이름이 그 뜻이다).
 .claude/settings.local.json
+
+# Windows 서비스 래퍼(NSSM) 바이너리 — scripts\windows\service.ps1 install 이 내려받는다.
+scripts/windows/.nssm/
+# 서비스 stdout/stderr (scripts\windows\service.ps1 이 쓴다)
+/logs/
+
