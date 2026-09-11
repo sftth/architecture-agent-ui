@@ -181,17 +181,17 @@ function RunConsole({
           <span className={`console-dot console-dot--${run.status}`} />
           <div>
             <div className="console-title">{run.title}</div>
-            <div className="console-prompt">
-              {run.stage_title} · {run.agent_label}
-              {run.model && (
-                <span className="console-model">
-                  {run.model}
-                  {run.effort ? ` · ${run.effort}` : ""}
-                </span>
-              )}
-              {/* 어느 계정으로 돌았나. 한도에 걸려 바꿔 탄 뒤 "정말 바뀌었나"를 여기서 본다. */}
-              {run.account_name && <span className="console-model"> · {run.account_name}</span>}
-            </div>
+            {(run.agent_key !== "main" || run.model) && (
+              <div className="console-prompt">
+                {run.agent_key !== "main" && `${run.stage_title} · ${run.agent_label}`}
+                {run.model && (
+                  <span className="console-model">
+                    {run.model}
+                    {run.effort ? ` · ${run.effort}` : ""}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         {/* 중지는 아래 입력판의 보내기 단추가 겸한다 — 보내는 것과 멈추는 것을

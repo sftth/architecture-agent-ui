@@ -312,6 +312,10 @@ export async function getUsage(): Promise<UsageSummary> {
   return request<UsageSummary>("/api/usage");
 }
 
+export async function refreshUsage(): Promise<UsageSummary> {
+  return request<UsageSummary>("/api/usage/refresh", { method: "POST" });
+}
+
 export async function renameRun(runId: string, title: string): Promise<RunSummary> {
   return request<RunSummary>(`/api/runs/${runId}`, {
     method: "PATCH",

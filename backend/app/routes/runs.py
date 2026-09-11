@@ -61,8 +61,7 @@ async def list_runs(user: User = Depends(current_user)):
     return run_manager.list_runs(user.id)
 
 
-@router.get("/api/usage", response_model=UsageSummary)
-async def usage(user: User = Depends(current_user)):
+def _usage_summary(user: User) -> UsageSummary:
     """상단 띠가 읽는 값. 제한 창은 지금 고른 Claude 계정의 것, 누적은 이 사용자의 run 들만 더한다."""
     runs = [r for r in run_manager.runs.values() if r.user_id == user.id]
     done = [r for r in runs if r.usage is not None]
@@ -72,6 +71,20 @@ async def usage(user: User = Depends(current_user)):
         tokens=sum(r.usage.total_tokens for r in done),
         cost_usd=sum(r.usage.cost_usd for r in done),
     )
+
+
+@router.get("/api/usage", response_model=UsageSummary)
+async def usage(user: User = Depends(current_user)):
+    return _usage_summary(user)
+
+
+@router.post("/api/usage/refresh", response_model=UsageSummary)
+async def refresh_usage(user: User = Depends(current_user)):
+    try:
+        await run_manager.refresh_rate_limit(user.id)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return _usage_summary(user)
 
 
 @router.get("/api/runs/{run_id}")

@@ -39,3 +39,43 @@
 }
 .usage-meter--warn > span { background: var(--signal-amber); }
 .usage-meter--bad > span { background: var(--gate-rose); }
+
+.usage { gap: 6px; position: relative; }
+.usage-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--paper-300);
+  cursor: pointer;
+}
+.usage-refresh:hover:not(:disabled), .usage-refresh:focus-visible {
+  border-color: var(--line-cyan);
+  color: var(--line-cyan);
+}
+.usage-refresh:focus-visible { outline: 1px solid var(--line-cyan); outline-offset: 2px; }
+.usage-refresh:disabled { opacity: .5; cursor: wait; }
+.usage-refresh[aria-busy="true"] svg { animation: usage-spin 1s linear infinite; }
+.usage-error {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 8px;
+  border: 1px solid var(--gate-rose);
+  border-radius: var(--radius-sm);
+  background: var(--surface-recess);
+  color: var(--gate-rose);
+  font-size: var(--text-2xs);
+}
+@keyframes usage-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .usage-refresh[aria-busy="true"] svg { animation: none; }
+}

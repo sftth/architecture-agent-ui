@@ -1,10 +1,8 @@
-/* 운영 단계의 APM 판. 토폴로지 판(.topo)과 같은 결 — 같은 면, 같은 테두리, 같은 머리 구조.
-   토폴로지가 "어디가 아픈가"라면 여기는 "지금 얼마나 바쁜가"다. */
+/* 운영 단계의 단일 APM 판. 하네스 아래 남은 공간을 사용한다. */
 .apm {
-  flex: none;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  max-height: 46%;
   min-height: 0;
   background: var(--ink-900);
   border: 1px solid var(--line-cyan-dim);
@@ -67,9 +65,14 @@
   text-overflow: ellipsis;
 }
 
-.apm-read {
+.apm-action {
   flex: none;
-  padding: 3px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   background: none;
   border: 1px solid var(--line-cyan-dim);
   border-radius: 999px;
@@ -79,17 +82,34 @@
   cursor: pointer;
 }
 
-.apm-read:hover:not(:disabled) {
+.apm-action:hover:not(:disabled) {
   border-color: var(--line-cyan);
   color: var(--paper-100);
 }
 
-.apm-read:disabled {
+.apm-action:focus-visible {
+  outline: 2px solid var(--line-cyan);
+  outline-offset: 3px;
+}
+
+.apm-action:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-/* 갱신 방식은 토폴로지의 .poll-* 를 그대로 쓴다(TopologyPanel.css). 감싼 줄만 여기. */
+.apm-read[aria-busy="true"] svg {
+  animation: apm-reading 1s linear infinite;
+}
+
+@keyframes apm-reading {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apm-read[aria-busy="true"] svg { animation: none; }
+}
+
+/* 갱신 방식은 공용 PollControls.css를 사용한다. 감싼 줄만 여기. */
 .apm-poll {
   flex: none;
   display: flex;

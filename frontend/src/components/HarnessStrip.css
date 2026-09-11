@@ -208,7 +208,7 @@ button.emp:hover .emp-name { color: var(--paper-100); }
 
 .emp--busy::after { background: var(--signal-amber); }
 
-/* 명패 — 두 줄까지, 줄마다 넘치면 말줄임. 전체 이름은 title 에. */
+/* 명패 — 두 줄까지, 줄마다 넘치면 말줄임. 전체 이름은 커스텀 툴팁에. */
 .emp-name {
   margin-top: 3px;
   height: 26px;

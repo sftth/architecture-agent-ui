@@ -2,6 +2,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApmObject, ApmSnapshot } from "../types";
 import { getApm, refreshApm, setApmAccount } from "../api/client";
 import { useFlash } from "../motion";
+// 수동/자동 컨트롤의 공용 스타일. TopologyPanel 마운트 여부에 의존하지 않는다.
+import "./PollControls.css";
 import "./ApmPanel.css";
 
 /** 자동으로 다시 읽는 간격. 값이 살아 있는 것이라 토폴로지보다 잦은 쪽에 무게를 둔다. */
@@ -38,9 +40,13 @@ const HOST_TYPES = new Set(["linux", "host"]);
  * 화면이 값을 만들지 않는 규칙은 같다. 카운터 이름과 값은 Scouter 가 준 그대로이고,
  * 색을 다시 계산해 판정을 붙이지 않는다 — 임계값은 여기가 아니라 설계가 정할 것이다.
  */
-export default function ApmPanel({ project }: { project: string }) {
+export default function ApmPanel({ project, onCheck }: {
+  project: string;
+  onCheck: (() => Promise<void>) | null;
+}) {
   const [snap, setSnap] = useState<ApmSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) === "on");
@@ -96,6 +102,16 @@ export default function ApmPanel({ project }: { project: string }) {
   }, []);
 
   const flash = useFlash(reads, 520);
+  async function check() {
+    if (!project || !onCheck || checking) return;
+    setChecking(true);
+    try {
+      await onCheck();
+    } finally {
+      setChecking(false);
+    }
+  }
+
   const stage = STAGE[snap?.stage ?? ""] ?? { text: "미확인", cls: "na" };
   const javas = useMemo(() => (snap?.objects ?? []).filter((o) => JAVA_TYPES.has(o.obj_type)), [snap]);
   const hosts = useMemo(() => (snap?.objects ?? []).filter((o) => HOST_TYPES.has(o.obj_type)), [snap]);
@@ -126,14 +142,37 @@ export default function ApmPanel({ project }: { project: string }) {
         </div>
 
         <div className="apm-head-row apm-head-row--acts">
+          {onCheck && (
+            <button
+              type="button"
+              className="apm-action"
+              onClick={() => void check()}
+              disabled={!project || checking}
+              aria-busy={checking}
+              aria-label={checking ? "점검 시작 중" : "지금 점검"}
+              title={checking ? "점검 시작 중…" : "지금 점검\n에이전트가 WEB/WAS 로그를 점검합니다. 토큰을 사용하며 결과는 실행 콘솔에서 확인합니다."}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="10" cy="10" r="6.5" />
+                <path d="m15 15 5 5M7 10l2 2 4-4" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
-            className="apm-read"
+            className="apm-action apm-read"
             onClick={() => void read()}
             disabled={!project || busy}
-            title={"지금 읽기\n백엔드가 Collector(6100)에 로그인한 클라이언트에서 값을 한 번 읽습니다. agent 를 부르지 않습니다. 첫 읽기는 클라이언트를 띄우느라 십여 초 걸릴 수 있습니다."}
+            aria-busy={busy}
+            aria-label={busy ? "읽는 중" : "지금 읽기"}
+            title={busy ? "Scouter 지표 읽는 중…" : "지금 읽기\nScouter 지표를 새로 읽습니다. 에이전트 호출이나 토큰 사용은 없습니다. 첫 읽기는 클라이언트 기동으로 시간이 걸릴 수 있습니다."}
           >
-            {busy ? "읽는 중…" : "지금 읽기"}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 7v5h-5M4 17v-5h5" />
+              <path d="M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 17.9 17" />
+            </svg>
           </button>
           <div className="apm-poll">
             <div className="poll-toggle" role="group" aria-label="갱신 방식">
