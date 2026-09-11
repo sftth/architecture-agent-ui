@@ -337,7 +337,8 @@ def _handle_stream_line(run: RunState, raw_line: str):
         for block in content:
             btype = block.get("type")
             if btype == "text":
-                run._emit("assistant", text=_truncate(block.get("text", "")),
+                # 하위 agent에 전달된 user 지시문도 스트림에 온다. 원래 역할을 보존한다.
+                run._emit(ev_type, text=_truncate(block.get("text", "")),
                            parent_tool_use_id=parent_id)
             elif btype == "thinking":
                 run._emit("thinking", text=_truncate(block.get("thinking", "")),

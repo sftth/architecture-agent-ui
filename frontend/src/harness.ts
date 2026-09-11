@@ -131,13 +131,14 @@ function idOf(data: unknown, field: string): string | null {
  * 1. Agent 도구 호출 — `Agent({subagent_type: "..."})` 의 tool_use 가 시작이고, 같은 id 의
  *    tool_result 가 끝이다. 짝이 안 닫힌 것이 곧 지금 도는 것이라, 동시 실행이 그대로 잡힌다.
  *    이건 추정이 아니라 로그에 박힌 신호다.
- * 2. 그런 호출이 하나도 안 열려 있으면, plan 이 말로 지목한 줄에서 짐작한다.
+ * 2. 이번 턴에 그런 호출이 없으면, plan 이 말로 지목한 줄에서 짐작한다.
  *    architecture-agent 의 plan 문서 다수가 Agent 도구를 직접 부르지 않고
  *    `@agent-name` 을 출력하는 방식이라(intent-plan.md), 그 경우 1번 신호가 아예 없다.
  *    이름을 둘 이상 부르는 줄은 계획표이지 "지금 그것"이 아니므로 건너뛴다.
  */
 export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
   const open = new Map<string, string>(); // tool_use id -> agent key
+  let explicitDispatch = false;
   // 마지막으로 턴이 끝난 자리. 그 앞의 일은 지난 턴의 일이다.
   let lastEnd = -1;
 
@@ -149,6 +150,7 @@ export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
     // 열린 위임은 그 턴과 함께 닫힌 것으로 치고, 그 뒤는 새로 센다.
     if (event.kind === "run_end") {
       open.clear();
+      explicitDispatch = false;
       lastEnd = i;
       continue;
     }
@@ -159,15 +161,20 @@ export function activeSubAgents(events: LogEvent[], keys: string[]): string[] {
       // 모호하지 않다 — 전에는 known 에 없으면 버렸는데, 그래서 CLI 내장 agent
       // (general-purpose 등)가 도는 동안 콘솔에는 보이고 하네스는 아무것도 안 켜졌다.
       // 걸러야 할 것은 이 갈래가 아니라 아래의 텍스트 추정이다.
-      if (target && id) open.set(id, target);
+      if (target && id) {
+        explicitDispatch = true;
+        open.set(id, target);
+      }
     } else if (event.kind === "tool_result") {
       const id = idOf(event.data, "tool_use_id");
       if (id) open.delete(id);
     }
   }
   if (open.size > 0) return [...new Set(open.values())];
+  // 명시적인 위임이 모두 반환됐다면 예전 assistant 문장 속 이름으로 다시 켜지 않는다.
+  if (explicitDispatch) return [];
 
-  // 2번 갈래 — 열린 위임이 없을 때만. 지난 턴의 말은 보지 않는다.
+  // 2번 갈래 — 명시적인 위임이 없는 턴만. 지난 턴의 말은 보지 않는다.
   for (let i = events.length - 1; i > lastEnd; i--) {
     const event = events[i];
     if (event.kind !== "tool_use" && event.kind !== "assistant") continue;

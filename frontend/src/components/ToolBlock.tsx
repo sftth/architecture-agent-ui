@@ -12,6 +12,8 @@ export interface ToolCall {
   input: string;
   /** 도구가 돌려준 것. 아직 안 끝났으면 null */
   output: string | null;
+  /** Skill 지침 또는 하위 agent의 진행 내용. 카드 안에서만 표시한다. */
+  details?: string;
   /** Bash의 description처럼 이 호출이 무엇을 하려는지 한 줄로 적힌 값 */
   note: string | null;
   /** 접힌 줄에 세울 한 줄 요약. 원본 input 에서 뽑는다(문자열화된 뒤에는 못 뽑는다). */
@@ -41,7 +43,9 @@ function ToolBlock({ tool }: { tool: ToolCall }) {
 
   const inPart = tool.input ? clip(tool.input, IN_LINES) : null;
   const outPart = tool.output ? clip(tool.output, OUT_LINES) : null;
-  const truncated = Boolean(inPart?.more || outPart?.more);
+  const detailPart = tool.details ? clip(tool.details, IN_LINES) : null;
+  const detailLabel = tool.name === "Skill" ? "지침" : "진행";
+  const truncated = Boolean(inPart?.more || outPart?.more || detailPart?.more);
   const running = tool.output === null;
 
   return (
@@ -84,7 +88,14 @@ function ToolBlock({ tool }: { tool: ToolCall }) {
               <CopyButton text={tool.output ?? ""} />
             </div>
           )}
-          {!inPart && !outPart && <p className="tool-empty">내용 없음</p>}
+          {detailPart && (
+            <div className="tool-line tool-line--out">
+              <span className="tool-tag">{detailLabel}</span>
+              <pre><code>{detailPart.shown}</code></pre>
+              <CopyButton text={tool.details ?? ""} />
+            </div>
+          )}
+          {!inPart && !outPart && !detailPart && <p className="tool-empty">내용 없음</p>}
           {/* 펼쳤을 때만 나온다 — 접힌 줄에 단추가 붙어 있으면 접은 의미가 없다.
               제 줄을 따로 가진다: OUT 위에 떠 있게 하면 OUT 이 한 줄일 때 복사 단추와 겹쳤다. */}
           <div className="tool-foot">
@@ -162,6 +173,15 @@ function Viewer({ tool, onClose }: { tool: ToolCall; onClose: () => void }) {
               <pre>
                 <code>{tool.output}</code>
               </pre>
+            </>
+          )}
+          {tool.details && (
+            <>
+              <div className="viewer-label">
+                <span>{tool.name === "Skill" ? "지침" : "진행"}</span>
+                <CopyButton text={tool.details} />
+              </div>
+              <pre><code>{tool.details}</code></pre>
             </>
           )}
         </div>
@@ -244,6 +264,7 @@ export default memo(ToolBlock, (a, b) => {
     x.name === y.name &&
     x.input === y.input &&
     x.output === y.output &&
+    x.details === y.details &&
     x.note === y.note &&
     x.failed === y.failed
   );

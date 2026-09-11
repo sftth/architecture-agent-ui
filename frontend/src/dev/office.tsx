@@ -97,7 +97,7 @@ function Dev() {
     const delegating: Activity = { kind: "agent", verb: "sub-agent 일하는 중", detail: firstImpl, lastSignal: null };
     switch (scene) {
       case "enter":
-        // 1.5초 뒤 지시가 떨어진다 — 2초 시점 스크린샷에 놀란 얼굴이 잡힌다.
+        // 1.5초 뒤 지시가 떨어지면 즉시 busy + sweat.
         setRun(runOf("running"));
         setTimeout(() => {
           setActive([firstImpl]);
@@ -105,6 +105,7 @@ function Dev() {
         }, 1500);
         break;
       case "typing":
+      case "busy":
         setRun(runOf("running"));
         setActive([firstImpl, secondImpl, "general-purpose"]);
         setActivity(delegating);
@@ -141,6 +142,21 @@ function Dev() {
         run={run}
         activity={activity}
       />
+      <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+        <button type="button" onClick={() => {
+          setRun(runOf("running"));
+          setActive([firstImpl, "general-purpose"]);
+        }}>작업 시작</button>
+        <button type="button" onClick={() => setActive([])}>결과 반환</button>
+        <button type="button" onClick={() => {
+          setActive([]);
+          setRun(runOf("success"));
+        }}>실행 완료</button>
+        <button type="button" onClick={() => {
+          setActive([]);
+          setRun(runOf("stopped"));
+        }}>실행 중지</button>
+      </div>
     </div>
   );
 }

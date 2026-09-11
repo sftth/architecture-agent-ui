@@ -170,6 +170,14 @@ function noteOf(data: unknown): string | null {
 export function toBlocks(events: LogEvent[]): Block[] {
   const blocks: Block[] = [];
   const byToolId = new Map<string, ToolCall>();
+  const agentPrompts = new Map<string, string>();
+  const skillsByScope = new Map<string | null, Map<string, ToolCall>>();
+  const toolDetails = new Map<ToolCall, string[]>();
+  const addDetail = (tool: ToolCall, text: string) => {
+    const parts = toolDetails.get(tool) ?? [];
+    if (text && !parts.includes(text)) parts.push(text);
+    toolDetails.set(tool, parts);
+  };
   // 직전 stderr 가 숨긴 알림이었나 — 그 본문(들여쓴 줄)도 함께 숨기기 위해.
   let muting = false;
   // 압축 턴 안인가. 그 턴의 답(요약)은 CLI 가 스스로 압축할 때처럼 화면에 세우지 않는다 —
@@ -201,9 +209,36 @@ export function toBlocks(events: LogEvent[]): Block[] {
     // system 가운데 압축 표시만은 세운다 — 세션이 스스로 한 일 중 사람이 알아야 하는 것이다.
     if (isNoise(event.kind) && !isCompactMark(event)) continue;
 
+    // Skill 원문은 별도 user 메시지로 주입된다(옛 로그는 assistant로 저장됨).
+    // 같은 agent가 호출한 Skill의 디렉터리 이름까지 일치할 때만 그 카드에 담는다.
+    const text = (event.text ?? "").trim();
+    if (event.kind === "user" || event.kind === "assistant") {
+      const directory = /^Base directory for this skill:\s*([^\r\n]+)/.exec(text)?.[1];
+      const skillName = directory?.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+      const skill = skillName ? skillsByScope.get(event.parent_tool_use_id)?.get(skillName) : undefined;
+      if (skill) {
+        addDetail(skill, text);
+        continue;
+      }
+    }
+
+    // 내부 지시문은 Agent 카드의 IN에 이미 있다. 별도 질문/답변이나 새 턴으로 세우지 않는다.
+    // 이전 로그는 user 텍스트가 assistant로 저장됐으므로 부모 호출의 prompt와 대조한다.
+    if (event.parent_tool_use_id) {
+      if (event.kind === "user") continue;
+      if (
+        event.kind === "assistant" &&
+        (event.text ?? "").trim() === agentPrompts.get(event.parent_tool_use_id)
+      ) continue;
+    }
+
     if (event.kind === "tool_use") {
       const id = idOf(event.data, "id") ?? key;
       const name = (field(event.data, "name") as string) ?? "tool";
+      const prompt = field(field(event.data, "input"), "prompt");
+      if ((name === "Agent" || name === "Task") && typeof prompt === "string" && prompt.trim()) {
+        agentPrompts.set(id, prompt.trim());
+      }
       const tool: ToolCall = {
         id,
         name,
@@ -214,6 +249,14 @@ export function toBlocks(events: LogEvent[]): Block[] {
         failed: false,
       };
       byToolId.set(id, tool);
+      if (name === "Skill") {
+        const skillName = field(field(event.data, "input"), "skill");
+        if (typeof skillName === "string") {
+          const skills = skillsByScope.get(event.parent_tool_use_id) ?? new Map<string, ToolCall>();
+          skills.set(skillName.split(":").pop()!, tool);
+          skillsByScope.set(event.parent_tool_use_id, skills);
+        }
+      }
       blocks.push({ kind: "tool", key, tool });
       continue;
     }
@@ -265,6 +308,22 @@ export function toBlocks(events: LogEvent[]): Block[] {
       }
     }
     if (compacting && (event.kind === "assistant" || event.kind === "result" || event.kind === "thinking")) {
+      continue;
+    }
+
+    // 하위 agent의 진행/반환은 부모 호출의 상세에 모은다. 직전 Bash의 출력이 아니다.
+    if (event.parent_tool_use_id &&
+        (event.kind === "assistant" || event.kind === "thinking" || event.kind === "result")) {
+      const parent = byToolId.get(event.parent_tool_use_id);
+      if (parent && (parent.name === "Agent" || parent.name === "Task")) {
+        addDetail(parent, text);
+      } else if (text) {
+        // 호출이 빠진 일부 기록도 긴 말풍선 대신 접을 수 있게 보존한다.
+        blocks.push({ kind: "tool", key, tool: {
+          id: key, name: "Agent 메시지", input: "", output: text,
+          note: null, gist: "하위 에이전트 메시지", failed: false,
+        } });
+      }
       continue;
     }
 
@@ -330,6 +389,11 @@ export function toBlocks(events: LogEvent[]): Block[] {
     blocks.push({ kind: "meta", key, label: meta.label, text: event.text ?? "", cls: meta.cls });
   }
 
+  // 완료 보고가 OUT으로 다시 도착하면 진행 영역에서 같은 본문을 한 번 더 보여 주지 않는다.
+  for (const [tool, parts] of toolDetails) {
+    const output = (tool.output ?? "").trim();
+    tool.details = parts.filter(part => !output.startsWith(part)).join("\n\n");
+  }
   closeTurn(events.length);
   return blocks;
 }
