@@ -13,6 +13,7 @@ from .config import CLAUDE_BIN, CLAUDE_PERMISSION_MODE, MAX_LOG_EVENTS_PER_RUN
 from .models import LogEvent, RateLimit, RunSummary, RunUsage
 from .orchestration import MAIN_AGENT_KEY, build_run_prompt
 from .response_policy import with_response_policy
+from .usage_probe import probe_rate_limit
 
 
 def _now() -> str:
@@ -651,12 +652,39 @@ class RunManager:
         self._tasks: Dict[str, asyncio.Task] = {}
         # 마지막으로 확인된 제한 창 상태 — (사용자, 계정) 마다 하나. run 이 돌 때마다 갱신된다.
         self.rate_limits: Dict[tuple, RateLimit] = {}
+        self._usage_tasks: Dict[tuple, asyncio.Task] = {}
         self._restore()
 
     def rate_limit_for(self, user_id: str) -> Optional[RateLimit]:
         """이 사용자가 지금 고른 계정의 제한 창 상태. 바꿔 타면 그 계정의 것이 보인다."""
         _env, account_id, _name = accounts.env_for(user_id)
         return self.rate_limits.get((user_id, account_id))
+
+    async def refresh_rate_limit(self, user_id: str) -> None:
+        """수동 갱신. 같은 계정의 진행 중인 확인 호출은 여러 탭이 함께 기다린다."""
+        env, account_id, _name = accounts.env_for(user_id)
+        key = (user_id, account_id)
+        task = self._usage_tasks.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(self._probe_usage(key, env))
+            self._usage_tasks[key] = task
+        try:
+            if not await asyncio.shield(task):
+                raise ValueError("Claude 사용량을 확인하지 못했습니다. 다시 시도해 주세요.")
+        finally:
+            if task.done() and self._usage_tasks.get(key) is task:
+                self._usage_tasks.pop(key, None)
+
+    async def _probe_usage(self, key: tuple, env: dict[str, str]) -> bool:
+        previous = self.rate_limits.get(key)
+        limit = await asyncio.to_thread(probe_rate_limit, env)
+        if limit is None:
+            return False
+        # 확인 중 실제 실행에서 새 값이 왔다면 그 값을 유지한다.
+        if self.rate_limits.get(key) is previous:
+            self.rate_limits[key] = limit
+            accounts.note_rate_limit(key[0], key[1], limit.status)
+        return True
 
     def _restore(self) -> None:
         """디스크에 남은 기록을 목록으로 되살린다. 로그는 실제로 열어 볼 때 읽는다."""

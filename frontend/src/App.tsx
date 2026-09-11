@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PhaseRail from "./components/PhaseRail";
 import HarnessStrip from "./components/HarnessStrip";
 import IoPanel from "./components/IoPanel";
-import TopologyPanel from "./components/TopologyPanel";
 import ApmPanel from "./components/ApmPanel";
 import RunConsole from "./components/RunConsole";
 import Composer from "./components/Composer";
@@ -32,6 +31,7 @@ import {
   logout,
   openRunSocket,
   renameRun,
+  refreshUsage,
   stopRun,
 } from "./api/client";
 import {
@@ -84,6 +84,10 @@ export default function App() {
   const [focusStage, setFocusStage] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [usageRefreshing, setUsageRefreshing] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const usageRequestRef = useRef(0);
+  const usagePendingRef = useRef(false);
   // 실행에 쓰는 Claude 계정들. 한도에 걸리면 머리의 칩에서 바꿔 탄다.
   const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
   // sub-agent 를 다시 읽게 하려고 다시 열기로 한 run. 도는 중이면 멈춘 뒤에 잇는다.
@@ -199,6 +203,37 @@ export default function App() {
       })
       .catch(() => setRunsById({}));
   }, [isReady, user?.architecture_agent_dir]);
+
+  // 계정 변경·로그아웃 시 진행 중이던 수동 갱신 응답은 버린다. 자동 호출은 하지 않는다.
+  useEffect(() => {
+    usagePendingRef.current = false;
+    setUsageRefreshing(false);
+    setUsageError(null);
+    return () => {
+      usageRequestRef.current += 1;
+    };
+  }, [isReady, user?.id, accounts?.active]);
+
+  async function handleRefreshUsage() {
+    if (usagePendingRef.current) return;
+    usagePendingRef.current = true;
+    const requestId = ++usageRequestRef.current;
+    setUsageRefreshing(true);
+    setUsageError(null);
+    try {
+      const next = await refreshUsage();
+      if (requestId === usageRequestRef.current) setUsage(next);
+    } catch {
+      if (requestId === usageRequestRef.current) {
+        setUsageError("사용량을 갱신하지 못했습니다. 다시 시도해 주세요.");
+      }
+    } finally {
+      if (requestId === usageRequestRef.current) {
+        usagePendingRef.current = false;
+        setUsageRefreshing(false);
+      }
+    }
+  }
 
   function connect(runId: string) {
     closeSocketRef.current?.();
@@ -611,7 +646,8 @@ ${text}` : text));
       {/* 제목은 한 줄이면 된다. 큰 표제는 매번 같은 말을 하면서 화면 위쪽을 먹었다. */}
       <header className="app-header">
         <div className="app-header-mark">ARCHITECTURE&#8209;AGENT</div>
-        <UsageStrip usage={usage} />
+        <UsageStrip usage={usage} refreshing={usageRefreshing} error={usageError}
+          onRefresh={handleRefreshUsage} />
         {/* 사용량 띠가 "차단"을 말하는 바로 옆에 다른 계정으로 가는 길이 있어야 한다. */}
         <AccountChip
           accounts={accounts}
@@ -674,20 +710,9 @@ ${text}` : text));
 
           {/* 로그는 "했다"는 말이고, 이 칸은 실제로 남은 파일이다. 하네스가 "무엇을 돌렸나"를
               말하면 이 표가 "그래서 뭐가 남았나"로 답한다 — 그래서 바로 아래에 붙인다. */}
-          {/* 운영 단계의 산출물은 status-middleware.json 하나이고, 그건 파일 목록으로
-              보는 것보다 토폴로지로 보는 편이 훨씬 낫다. 그래서 그 자리를 바꿔 끼운다. */}
+          {/* 운영은 Scouter 지표만 표시한다. 로그 점검은 APM 헤더에서 별도로 실행한다. */}
           {phase === "operate" ? (
-            <>
-              <TopologyPanel
-                project={project}
-                onCheck={hasStatusAgent ? runCheck : null}
-                onSendToContext={sendToContext}
-              />
-              {/* 두 판, 두 길. 위는 agent 가 「지금 점검」으로 한 번 돌아 남긴 로그 판정이고,
-                  아래는 백엔드가 Scouter 에서 직접 읽는 살아 있는 수치다. 주기적으로 보는 것은
-                  아래여야 한다 — 위를 주기로 돌리면 토큰이 흘러나간다. */}
-              <ApmPanel project={project} />
-            </>
+            <ApmPanel project={project} onCheck={hasStatusAgent ? runCheck : null} />
           ) : (
             <IoPanel phase={phase} project={project} activeRun={activeRun} />
           )}

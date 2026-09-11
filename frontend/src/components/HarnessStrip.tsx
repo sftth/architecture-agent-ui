@@ -486,11 +486,11 @@ function Employee({
     </>
   );
   return pickable ? (
-    <button type="button" className={cls} title={title} onClick={onPick}>
+    <button type="button" className={cls} data-tip={title} onClick={onPick}>
       {body}
     </button>
   ) : (
-    <span className={cls} title={title}>
+    <span className={cls} data-tip={title}>
       {body}
     </span>
   );

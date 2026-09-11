@@ -20,6 +20,7 @@ import {
 } from "./topology";
 import { useFlash, usePrefersReducedMotion, usePrev } from "../motion";
 import "./TopologyPanel.css";
+import "./PollControls.css";
 
 /** 자동 갱신 간격. */
 const INTERVALS = [
