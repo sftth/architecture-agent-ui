@@ -117,8 +117,11 @@ TPS · 응답시간 · Heap · CPU 는 agent 가 아니라 **백엔드가 직접
 3. 운영 화면의 APM 판에서 Collector 로그인 계정(Desktop Client 에 넣는 id · 비밀번호)을 넣습니다.
    백엔드가 `backend/data/scouter_accounts.json`(0600)에 보관하고 webapp 설정에만 풀어 씁니다.
 
-Collector 주소·포트는 `output/{project}/confirmed/infra_confirmed.json` 의
-`monitoring_targets.scouter`(planner 가 적은 확정값)에서 읽습니다. 「지금 읽기」나 자동 모드가
+Collector 주소·포트는 `output/{project}/confirmed/monitoring_confirmed.json` 의
+`monitoring_targets.scouter`(planner 가 적은 확정값)에서 읽습니다.
+`common.desktop_client.endpoint`의 외부 접속 주소(`host:port`)를 우선 사용하고,
+없으면 Collector 노드의 `ip` 또는 `common.collector_ip`와 `common.tcp_port`를 사용합니다.
+「지금 읽기」나 자동 모드가
 처음 읽을 때 webapp 을 띄우고(십여 초), 한동안 읽지 않으면 스스로 내립니다. 백엔드가 내려가면
 함께 내려갑니다.
 
